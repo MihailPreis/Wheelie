@@ -2,7 +2,7 @@
 
 **An unofficial fan-made web port of Gravity Defied** — the classic 2004 trial racing game for J2ME phones, playable in the browser.
 
-> **Status: early development.** There is nothing playable yet. This repository currently holds the project setup; the list below describes what is being built, not what exists today.
+> **Status: early development.** There is nothing playable yet. The physics core is ported and verified against the original; rendering, controls and menus come next. The list below describes what is being built, not what exists today.
 
 ## What it is
 
@@ -36,6 +36,36 @@ Wheelie! is a port of the [Android remaster of Gravity Defied](https://github.co
 ## Tech
 
 TypeScript, Vite and Canvas 2D, with no game engine and no backend. The game is a static site, hosted on GitHub Pages and published on itch.io.
+
+## Development
+
+Requires Node.js 24+ and pnpm 12.
+
+```
+pnpm install
+pnpm dev          # start the dev server
+pnpm check        # lint and type-check
+pnpm test         # unit tests, including the physics comparison against the original
+pnpm test:e2e     # browser tests: smoke test and cross-engine determinism
+pnpm build        # production build in dist/
+```
+
+### Physics fidelity
+
+The simulation in `src/core` is an integer-only port of the original physics, and it has to match the
+original bit for bit: a replay stores nothing but the player's inputs.
+
+`tools/golden` compiles the unmodified Java sources of the Android port against small stand-ins for
+the Android classes, runs them headless over a set of scenarios and records the inputs, statuses and
+state hashes in `tests/golden`. The unit tests replay those recordings against the TypeScript port,
+and the browser tests do the same in Chromium, Firefox and WebKit.
+
+To regenerate the recordings (needs a JDK):
+
+```
+pnpm reference:fetch
+pnpm golden:generate
+```
 
 ## Credits
 

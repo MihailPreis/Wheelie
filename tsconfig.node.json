@@ -1,9 +1,10 @@
 {
-  // Build configuration and end-to-end tests run in Node, not in the browser.
+  // Build configuration and tests run in Node, not in the browser.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "lib": ["ES2023", "DOM"],
     "types": ["node"]
   },
-  "include": ["*.config.ts", "tests/e2e"]
+  "include": ["*.config.ts", "tests/e2e", "src/**/*.test.ts"],
+  "exclude": []
 }
