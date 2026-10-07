@@ -58,6 +58,7 @@ export const STRINGS = {
   vibrateOnTouch: 'Vibrate on touch',
   keyboardInMenu: 'Keyboard in menu',
   music: 'Music',
+  sound: 'Sound',
   clearHighscore: 'Clear highscore',
   fullReset: 'Full Reset',
   confirmClear: 'Confirm Clear',
@@ -99,6 +100,7 @@ The keysets apply to the digit keys and to the on-screen keypad, whose buttons s
 <b>Vibrate on touch: On/Off</b><br>Default: &lt;On&gt;<br>Enables haptic feedback when you press the on-screen keys.<br><br>
 <b>Keyboard in menu: On/Off</b><br>Default: &lt;On&gt;<br>Turns on and off the on-screen keyboard in menus.<br><br>
 <b>Music: On/Off</b><br>Default: &lt;On&gt;<br>Turns the background music on and off.<br><br>
+<b>Sound: On/Off</b><br>Default: &lt;On&gt;<br>Turns the engine and the sound effects on and off.<br><br>
 <b>Clear highscore</b><br>Lets you clear the highscores. Here you can also do a "Full Reset" which will reset the game to its original state (clear settings, highscores, unlocked levels and leagues).`,
   aboutText: `<b>${APP_NAME}</b><br>${APP_TAGLINE}.<br><br>
 This is a fan project. It is not affiliated with, endorsed by or connected to Codebrew Software. All rights to the original Gravity Defied, its name, logo, brand and original assets belong to Codebrew Software.<br><br>

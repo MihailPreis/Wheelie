@@ -1,5 +1,7 @@
 import { App, type Pack } from './app';
 import { Music } from './audio/music';
+import { AudioOutput } from './audio/output';
+import { Sound } from './audio/sound';
 import { APP_NAME, APP_TAGLINE } from './config';
 import { parsePackHeader, parseTrack } from './formats/mrg';
 import { Game } from './game/game';
@@ -104,7 +106,10 @@ async function main(): Promise<void> {
   const game = new Game(canvas, sprites, input);
   const keypad = new Keypad(input);
   const menu = new MenuView((name) => `${base}assets/sprites/3x/${name}.png`);
-  const music = new Music(`${base}assets/audio/go.ogg`);
+  const output = new AudioOutput();
+  const music = new Music(output, `${base}assets/audio/go.ogg`);
+  const sound = new Sound(output);
+  game.audio = sound;
 
   const menuButton = element('button', 'menu-button');
   menuButton.type = 'button';
@@ -124,7 +129,7 @@ async function main(): Promise<void> {
   };
   new ResizeObserver(layout).observe(canvas);
 
-  const app = new App(pack, game, input, keypad, menu, music, menuButton, layout);
+  const app = new App(pack, game, input, keypad, menu, music, sound, menuButton, layout);
   if (matchMedia('(pointer: coarse)').matches) input.touch(-1, null);
   input.touchEnd(-1);
 
@@ -143,7 +148,7 @@ async function main(): Promise<void> {
   });
   window.addEventListener('blur', () => input.release());
   document.addEventListener('visibilitychange', () => {
-    music.setHidden(document.hidden);
+    output.setHidden(document.hidden);
     if (document.hidden) {
       app.hidden();
       game.stop();

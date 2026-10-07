@@ -17,6 +17,9 @@ const SLOW_FRAME_MILLISECONDS = 25;
 const QUALITY_WINDOW_FRAMES = 60;
 const QUALITY_STEP = 0.75;
 
+/** Frame speed, in the simulation's units per tick, at which the engine sound tops out. */
+const ENGINE_TOP_SPEED = 2_200_000;
+
 const ticksFor = (milliseconds: number) => Math.ceil(milliseconds / TICK_MILLISECONDS);
 const CRASH_RESTART_TICKS = ticksFor(3000);
 const HARD_CRASH_RESTART_TICKS = ticksFor(1000);
@@ -45,6 +48,15 @@ export interface RunResult {
   time: number;
   /** The front wheel never touched the ground. */
   wheelie: boolean;
+}
+
+/** Sounds of a run. Nothing here feeds back into the simulation. */
+export interface GameAudio {
+  /** Called every frame while the player is riding; `speed` is 0…1. */
+  engine(speed: number, throttle: boolean): void;
+  engineOff(): void;
+  crash(): void;
+  finish(wheelie: boolean): void;
 }
 
 function copyPose(from: Pose, to: Pose): void {
@@ -82,6 +94,7 @@ export class Game {
   paused = false;
   /** Called when a run reaches the finish, after the bike has rolled out. The scene then stands still. */
   onFinish: ((result: RunResult) => void) | null = null;
+  audio: GameAudio | null = null;
 
   private readonly ctx: CanvasRenderingContext2D;
   private readonly renderer: SceneRenderer;
@@ -97,6 +110,7 @@ export class Game {
   /** Ticks until a broken bike is put back on the start; 0 while it is whole. */
   private brokenTicks = 0;
   private result: RunResult | null = null;
+  private throttle = false;
 
   private message: string | null = null;
   private messageTicks = 0;
@@ -199,6 +213,7 @@ export class Game {
 
   stop(): void {
     this.running = false;
+    this.audio?.engineOff();
     cancelAnimationFrame(this.frameRequest);
   }
 
@@ -219,8 +234,22 @@ export class Game {
       }
     }
     this.draw(this.paused ? 1 : this.pending / interval);
+    this.updateEngineSound();
     this.frameRequest = requestAnimationFrame(this.frame);
   };
+
+  private updateEngineSound(): void {
+    const audio = this.audio;
+    if (!audio) return;
+    const riding =
+      !this.demo && !this.paused && this.brokenTicks === 0 && (this.phase === 'riding' || this.phase === 'finished');
+    if (!riding) {
+      audio.engineOff();
+      return;
+    }
+    const speed = Math.hypot(this.current.frameVx, this.current.frameVy) / ENGINE_TOP_SPEED;
+    audio.engine(Math.min(1, speed), this.throttle && this.phase === 'riding');
+  }
 
   /** Lowers the rendering resolution when frames have been slow for a whole window. */
   private watchFrameRate(gap: number): void {
@@ -267,6 +296,7 @@ export class Game {
 
     const controls = this.demo ? { throttle: 0, lean: 0 } : this.input.read();
     const status = sim.step(controls.throttle, controls.lean);
+    this.throttle = controls.throttle > 0;
     copyPose(this.current, this.previous);
     this.previousLookX = this.animator.lookX;
     this.previousLookY = this.animator.lookY;
@@ -287,8 +317,10 @@ export class Game {
 
     if (status === Status.Broken && this.brokenTicks === 0) {
       this.brokenTicks = CRASH_RESTART_TICKS;
+      this.audio?.crash();
       this.showMessage('Crashed', CRASH_RESTART_TICKS);
     } else if (status === Status.Crashed) {
+      if (this.brokenTicks === 0) this.audio?.crash();
       this.phase = 'crashed';
       this.phaseTicks =
         this.brokenTicks > 0 ? Math.min(this.brokenTicks, HARD_CRASH_RESTART_TICKS) : HARD_CRASH_RESTART_TICKS;
@@ -297,6 +329,7 @@ export class Game {
       this.phase = 'finished';
       this.phaseTicks = FINISH_TICKS;
       this.result = { time: sim.raceTime, wheelie: sim.wheelie };
+      this.audio?.finish(sim.wheelie);
       this.showMessage(sim.wheelie ? 'Wheelie!' : 'Finished', FINISH_TICKS);
     }
   }

@@ -1,4 +1,5 @@
 import type { Music } from './audio/music';
+import type { Sound } from './audio/sound';
 import type { Game, RunResult, Track } from './game/game';
 import { GamepadNavigator } from './game/gamepad-nav';
 import {
@@ -95,6 +96,7 @@ export class App {
     private readonly keypad: Keypad,
     private readonly menu: MenuView,
     private readonly music: Music,
+    private readonly sound: Sound,
     private readonly menuButton: HTMLElement,
     private readonly onLayout: () => void,
   ) {
@@ -125,6 +127,7 @@ export class App {
     this.input.keyset = s.keyset;
     this.keypad.vibrate = s.vibrate;
     if (this.music.enabled !== s.music) this.music.enabled = s.music;
+    this.sound.enabled = s.sound;
     this.updateKeypad();
   }
 
@@ -157,6 +160,8 @@ export class App {
 
   private menuKey(key: MenuKey): void {
     this.music.unlock();
+    if (key === 'fire' || key === 'back') this.sound.menuSelect();
+    else this.sound.menuMove();
     this.menu.key(key);
   }
 
@@ -169,7 +174,7 @@ export class App {
       if (!key) return false;
       // Holding a key repeats movement but not selection.
       if (event.repeat && (key === 'fire' || key === 'back')) return true;
-      this.menu.key(key);
+      this.menuKey(key);
       return true;
     }
     if (event.repeat) return this.input.keyDown(event.code);
@@ -522,7 +527,8 @@ export class App {
           | 'lookAhead'
           | 'vibrate'
           | 'keypadInMenu'
-          | 'music',
+          | 'music'
+          | 'sound',
       ): MenuItem => ({
         kind: 'option',
         label,
@@ -559,6 +565,7 @@ export class App {
           toggle(S.vibrateOnTouch, 'vibrate'),
           toggle(S.keyboardInMenu, 'keypadInMenu'),
           toggle(S.music, 'music'),
+          toggle(S.sound, 'sound'),
           this.link(S.clearHighscore, this.eraseScreen(self)),
           { kind: 'action', label: S.back, run: back },
         ],

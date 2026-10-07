@@ -13,6 +13,8 @@ export interface Settings {
   /** Keep the on-screen keypad visible in the menus. */
   keypadInMenu: boolean;
   music: boolean;
+  /** Engine and effects. */
+  sound: boolean;
   /** Three characters, A–Z or space, entered for the high score tables. */
   name: string;
 }
@@ -29,6 +31,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   vibrate: true,
   keypadInMenu: true,
   music: true,
+  sound: true,
   name: DEFAULT_NAME,
 };
 
@@ -53,6 +56,7 @@ export function loadSettings(): Settings {
     'vibrate',
     'keypadInMenu',
     'music',
+    'sound',
   ] as const) {
     if (typeof stored[key] === 'boolean') settings[key] = stored[key];
   }
