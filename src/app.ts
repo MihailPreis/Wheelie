@@ -1,6 +1,8 @@
 import type { Music } from './audio/music';
 import type { Sound } from './audio/sound';
-import type { Game, RunResult, Track } from './game/game';
+import { PHYSICS_VERSION } from './core/version';
+import { encodeReplay, hashTrack, Outcome, type Replay } from './formats/replay';
+import type { Game, RecordedRun, RunResult, Track } from './game/game';
 import { GamepadNavigator } from './game/gamepad-nav';
 import {
   addScore,
@@ -30,10 +32,16 @@ import { loadSettings, normalizeName, type Settings, saveSettings } from './game
 import type { Library } from './mods/library';
 import type { Pack } from './mods/pack';
 import { ModsScreens, type ScreenBuilder } from './mods/screens';
+import { ReplayScreens } from './replay/screens';
+import { verifyReplay } from './replay/simulate';
+import type { ReplayStore } from './replay/store';
 import { removeAll, writeJson } from './storage/store';
 import type { Keypad } from './ui/keypad';
 import type { MenuItem, MenuKey, MenuView } from './ui/menu/view';
 import { STRINGS as S } from './ui/strings';
+
+/** Three seconds of riding; shorter unfinished runs are not kept. */
+const MIN_UNFINISHED_TICKS = 200;
 
 /** Where the identifier of the pack being played is remembered. */
 export const ACTIVE_PACK_KEY = 'activePack';
@@ -79,6 +87,7 @@ export class App {
   private progress: Progress;
   private trackCounts: number[];
   private readonly mods: ModsScreens;
+  private readonly replays: ReplayScreens;
   private readonly padNavigator = new GamepadNavigator();
 
   private current: ScreenBuilder | null = null;
@@ -91,6 +100,7 @@ export class App {
     private pack: Pack,
     original: Pack,
     library: Library,
+    private readonly replayStore: ReplayStore,
     baseUrl: string,
     private readonly game: Game,
     private readonly input: Input,
@@ -123,7 +133,10 @@ export class App {
       original,
     );
 
+    this.replays = new ReplayScreens({ open: (builder) => this.open(builder), parent: this.mainMenu }, replayStore);
+
     game.onFinish = (result) => this.finished(result);
+    game.onRun = (run) => this.recordRun(run);
     input.onDeviceChange = () => this.updateKeypad();
     keypad.onPress = (digit) => {
       const key = KEYPAD_KEYS[digit];
@@ -321,6 +334,50 @@ export class App {
     this.updateKeypad();
   }
 
+  /** Keeps a run as a replay, once riding it again has been seen to end the same way. */
+  private recordRun(run: RecordedRun): void {
+    const track = this.trackAt(this.level, this.track);
+    // A run given up within the first seconds is not worth a place in the list.
+    if (!track || (run.outcome !== Outcome.Finished && run.inputs.length < MIN_UNFINISHED_TICKS)) return;
+    const date = Date.now();
+    const replay: Replay = {
+      physicsVersion: PHYSICS_VERSION,
+      packId: this.pack.id,
+      level: this.level,
+      track: this.track,
+      league: this.game.league,
+      trackHash: hashTrack(track.data),
+      trackName: track.name,
+      player: this.settings.name,
+      date: Math.floor(date / 1000),
+      outcome: run.outcome,
+      wheelie: run.wheelie,
+      time: run.time,
+      finalHash: run.finalHash,
+      inputs: run.inputs,
+      // Tracks from the player's own files exist nowhere else, so they travel with the replay.
+      trackData: this.pack.id.startsWith('file-') ? track.data : null,
+    };
+    if (!verifyReplay(track.data, replay)) {
+      console.warn('A run could not be reproduced and was not saved.');
+      return;
+    }
+    void this.replayStore.add({
+      bytes: encodeReplay(replay),
+      packId: replay.packId,
+      packName: this.pack.name,
+      level: replay.level,
+      track: replay.track,
+      league: replay.league,
+      trackName: replay.trackName,
+      player: replay.player,
+      date,
+      outcome: replay.outcome,
+      wheelie: replay.wheelie,
+      time: replay.time,
+    });
+  }
+
   // ---- finishing a run --------------------------------------------------------------------
 
   private finished(result: RunResult): void {
@@ -442,6 +499,7 @@ export class App {
     items: [
       this.link(S.playMenu, this.playMenu),
       { kind: 'action', label: S.mods, run: () => this.open(this.mods.menu) },
+      { kind: 'action', label: S.myRuns, run: () => void this.replays.openList() },
       this.link(S.options, this.optionsMenu(this.mainMenu)),
       this.link(S.help, this.helpMenu(this.mainMenu)),
       this.link(S.about, this.textScreen(S.about, S.aboutText, this.mainMenu)),

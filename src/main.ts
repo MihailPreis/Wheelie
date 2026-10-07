@@ -9,6 +9,7 @@ import { Library } from './mods/library';
 import { buildPack, ORIGINAL_PACK_ID, type Pack } from './mods/pack';
 import { GAME_FONT } from './render/hud';
 import { loadSprites } from './render/sprites';
+import { ReplayStore } from './replay/store';
 import { readJson } from './storage/store';
 import './style.css';
 import { Keypad } from './ui/keypad';
@@ -117,6 +118,7 @@ async function main(): Promise<void> {
   const game = new Game(canvas, sprites, input);
   const keypad = new Keypad(input);
   const menu = new MenuView((name) => `${base}assets/sprites/3x/${name}.png`);
+  const replayStore = new ReplayStore();
   const output = new AudioOutput();
   const music = new Music(output, `${base}assets/audio/go.ogg`);
   const sound = new Sound(output);
@@ -140,8 +142,24 @@ async function main(): Promise<void> {
   };
   new ResizeObserver(layout).observe(canvas);
 
-  const app = new App(pack, original, library, base, game, input, keypad, menu, music, sound, menuButton, layout, () =>
-    library.clear(),
+  const app = new App(
+    pack,
+    original,
+    library,
+    replayStore,
+    base,
+    game,
+    input,
+    keypad,
+    menu,
+    music,
+    sound,
+    menuButton,
+    layout,
+    () => {
+      library.clear();
+      replayStore.clear();
+    },
   );
   if (matchMedia('(pointer: coarse)').matches) input.touch(-1, null);
   input.touchEnd(-1);

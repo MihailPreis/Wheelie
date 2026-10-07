@@ -1,5 +1,6 @@
 import { createPose, type Pose, Sim, Status, TICK_MILLISECONDS } from '../core/sim';
 import type { TrackData } from '../formats/mrg';
+import { inputCode, Outcome } from '../formats/replay';
 import { Animator } from '../render/animator';
 import { drawHud } from '../render/hud';
 import { type SceneOptions, SceneRenderer, type Viewport } from '../render/scene';
@@ -50,6 +51,18 @@ export interface RunResult {
   wheelie: boolean;
 }
 
+/** A run as it was ridden, from the start line to wherever it ended. */
+export interface RecordedRun {
+  /** One input code per simulation tick. */
+  inputs: Uint8Array;
+  outcome: Outcome;
+  wheelie: boolean;
+  /** Race time in milliseconds; 0 unless finished. */
+  time: number;
+  /** Hash of the simulation state after the last tick. */
+  finalHash: number;
+}
+
 /** Sounds of a run. Nothing here feeds back into the simulation. */
 export interface GameAudio {
   /** Called every frame while the player is riding; `speed` is 0…1. */
@@ -95,6 +108,8 @@ export class Game {
   /** Called when a run reaches the finish, after the bike has rolled out. The scene then stands still. */
   onFinish: ((result: RunResult) => void) | null = null;
   audio: GameAudio | null = null;
+  /** Called once for every run of the player's, however it ended. */
+  onRun: ((run: RecordedRun) => void) | null = null;
 
   private readonly ctx: CanvasRenderingContext2D;
   private readonly renderer: SceneRenderer;
@@ -102,7 +117,7 @@ export class Game {
 
   private sim: Sim | null = null;
   private track: Track | null = null;
-  private league = 0;
+  private currentLeague = 0;
   private demo = false;
 
   private phase: Phase = 'riding';
@@ -111,6 +126,7 @@ export class Game {
   private brokenTicks = 0;
   private result: RunResult | null = null;
   private throttle = false;
+  private recorded: number[] = [];
 
   private message: string | null = null;
   private messageTicks = 0;
@@ -164,9 +180,10 @@ export class Game {
   load(track: Track, league: number, demo = false): void {
     // Constructed first so an invalid track leaves the current run untouched.
     const sim = new Sim({ track: track.data, league, demo });
+    this.endRun();
     this.sim = sim;
     this.track = track;
-    this.league = league;
+    this.currentLeague = league;
     this.demo = demo;
     this.begin(!demo);
   }
@@ -174,13 +191,35 @@ export class Game {
   /** Starts the current track over (`GDActivity.restart`). */
   restart(): void {
     if (!this.track) return;
-    this.sim = new Sim({ track: this.track.data, league: this.league, demo: this.demo });
+    this.endRun();
+    this.sim = new Sim({ track: this.track.data, league: this.currentLeague, demo: this.demo });
     this.begin(!this.demo);
+  }
+
+  /** League of the track that is loaded. */
+  get league(): number {
+    return this.currentLeague;
   }
 
   /** Whether a run is under way that pausing would interrupt. */
   get riding(): boolean {
     return !this.demo && this.sim !== null && this.phase !== 'done';
+  }
+
+  /** Hands the run that is ending to whoever keeps replays. */
+  private endRun(): void {
+    const sim = this.sim;
+    if (!sim || this.demo || this.recorded.length === 0) return;
+    const crashed = this.brokenTicks > 0 || this.phase === 'crashed' || sim.status === Status.Crashed;
+    const run: RecordedRun = {
+      inputs: Uint8Array.from(this.recorded),
+      outcome: this.result ? Outcome.Finished : crashed ? Outcome.Crashed : Outcome.Abandoned,
+      wheelie: this.result?.wheelie ?? false,
+      time: this.result?.time ?? 0,
+      finalHash: sim.hash() >>> 0,
+    };
+    this.recorded = [];
+    this.onRun?.(run);
   }
 
   private begin(showName: boolean): void {
@@ -189,6 +228,7 @@ export class Game {
     this.phaseTicks = 0;
     this.brokenTicks = 0;
     this.result = null;
+    this.recorded = [];
     this.animator.reset();
     this.sim.capture(this.current);
     copyPose(this.current, this.previous);
@@ -297,6 +337,7 @@ export class Game {
     const controls = this.demo ? { throttle: 0, lean: 0 } : this.input.read();
     const status = sim.step(controls.throttle, controls.lean);
     this.throttle = controls.throttle > 0;
+    if (!this.demo) this.recorded.push(inputCode(controls.throttle, controls.lean));
     copyPose(this.current, this.previous);
     this.previousLookX = this.animator.lookX;
     this.previousLookY = this.animator.lookY;
@@ -337,6 +378,7 @@ export class Game {
   private finish(): void {
     this.phase = 'done';
     this.message = null;
+    this.endRun();
     if (this.result) this.onFinish?.(this.result);
   }
 

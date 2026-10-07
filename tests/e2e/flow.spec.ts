@@ -26,9 +26,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('main menu leads to every section and back', async ({ page }) => {
-  await expect(items(page)).toHaveText(['Play Menu', 'Mods', 'Options', 'Help', 'About']);
+  await expect(items(page)).toHaveText(['Play Menu', 'Mods', 'My runs', 'Options', 'Help', 'About']);
 
-  await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
+  await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('Help');
   await press(page, 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('Keys');
@@ -42,7 +42,7 @@ test('main menu leads to every section and back', async ({ page }) => {
 });
 
 test('options are toggled and remembered', async ({ page }) => {
-  await press(page, 'ArrowDown', 'ArrowDown', 'Enter');
+  await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('Options');
   const perspective = page.locator('.menu-item', { hasText: 'Perspective' }).locator('.menu-value');
   await expect(perspective).toHaveText('On');
@@ -52,7 +52,7 @@ test('options are toggled and remembered', async ({ page }) => {
   await page.reload();
   await page.keyboard.press('Enter');
   await expect(title(page)).toHaveText('Main', { timeout: 10_000 });
-  await press(page, 'ArrowDown', 'ArrowDown', 'Enter');
+  await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(perspective).toHaveText('Off');
 });
 
@@ -145,4 +145,33 @@ test('a level pack is installed from the catalogue, played and deleted', async (
   await press(page, 'Enter', 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('Play');
   expect(await activePack()).toBe('"original"');
+});
+
+test('a run is recorded and listed under My runs', async ({ page }) => {
+  // Ride for real: the recording is made of the inputs the simulation was given.
+  await press(page, 'Enter', 'Enter');
+  await expect(page.locator('.menu')).toBeHidden();
+  await page.keyboard.down('ArrowUp');
+  await page.waitForTimeout(4000);
+  await page.keyboard.up('ArrowUp');
+  await press(page, 'Escape');
+  await expect(title(page)).toHaveText('Ingame');
+  await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
+  await expect(title(page)).toHaveText('Play');
+
+  await press(page, 'Escape', 'ArrowDown', 'ArrowDown', 'Enter');
+  await expect(title(page)).toHaveText('My runs');
+  await expect(items(page)).toHaveCount(2);
+  await expect(items(page).first()).toContainText('100cc');
+
+  // It is still there after a reload, and can be deleted.
+  await page.reload();
+  await page.keyboard.press('Enter');
+  await expect(title(page)).toHaveText('Main', { timeout: 10_000 });
+  await press(page, 'ArrowDown', 'ArrowDown', 'Enter');
+  await expect(items(page)).toHaveCount(2);
+  await press(page, 'Enter');
+  await expect(texts(page).nth(1)).toContainText('Result');
+  await press(page, 'Enter');
+  await expect(texts(page).first()).toContainText('No runs yet');
 });
