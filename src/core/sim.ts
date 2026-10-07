@@ -16,6 +16,48 @@ export interface SimOptions {
   demo?: boolean;
 }
 
+/** Number of point bodies the bike is made of. */
+export const BODY_COUNT = 6;
+
+/**
+ * What drawing needs to know about one moment of the simulation. Coordinates are 16.16 fixed
+ * point in body space; the arrays are indexed by `BodyIndex`.
+ */
+export interface Pose {
+  x: Float64Array;
+  y: Float64Array;
+  /** Wheel rotation; meaningful for the two wheels only. */
+  angle: Float64Array;
+  /** Velocity of the frame, which drives the look-ahead camera. */
+  frameVx: number;
+  frameVy: number;
+  /** Rider posture: 0 leaning back, 0x10000 leaning forward. */
+  riderLean: number;
+  broken: boolean;
+  /** Progress from start to finish, 16.16 in 0…1. */
+  progress: number;
+  /** Horizontal extent and height of the bike in track space, for the ground shadow. */
+  shadowLeft: number;
+  shadowRight: number;
+  shadowY: number;
+}
+
+export function createPose(): Pose {
+  return {
+    x: new Float64Array(BODY_COUNT),
+    y: new Float64Array(BODY_COUNT),
+    angle: new Float64Array(BODY_COUNT),
+    frameVx: 0,
+    frameVy: 0,
+    riderLean: 32768,
+    broken: false,
+    progress: 0,
+    shadowLeft: 0,
+    shadowRight: 0,
+    shadowY: 0,
+  };
+}
+
 /** Opaque state captured by {@link Sim.save}. */
 export interface SimSnapshot {
   readonly physics: Int32Array;
@@ -71,6 +113,33 @@ export class Sim {
     }
     this.status = status;
     return status;
+  }
+
+  get league(): number {
+    return this.physics.league;
+  }
+
+  /** Copies the current state of the bike into `pose` for drawing. */
+  capture(pose: Pose): void {
+    const physics = this.physics;
+    for (let i = 0; i < BODY_COUNT; i++) {
+      const state = physics.bodies[i]?.slots[physics.current];
+      if (!state) continue;
+      pose.x[i] = state.x;
+      pose.y[i] = state.y;
+      pose.angle[i] = state.angle;
+    }
+    const frame = physics.bodies[0]?.slots[physics.current];
+    pose.frameVx = frame?.vx ?? 0;
+    pose.frameVy = frame?.vy ?? 0;
+    pose.riderLean = physics.riderLean;
+    pose.broken = physics.broken;
+    // The original follows the leading wheel, or the frame once the bike has broken apart.
+    const lead = Math.max(pose.x[1] as number, pose.x[2] as number);
+    pose.progress = this.terrain.progress(physics.broken ? (pose.x[0] as number) : lead);
+    pose.shadowLeft = this.terrain.shadowLeft;
+    pose.shadowRight = this.terrain.shadowRight;
+    pose.shadowY = this.terrain.shadowY;
   }
 
   /** Race time in milliseconds. */

@@ -212,6 +212,8 @@ export class Physics {
   readonly bodies: Body[] = [];
   private readonly springs: Spring[] = [];
   private tuning: LeagueTuning = LEAGUES[0] as LeagueTuning;
+  /** 0–3; decides the bike's tuning and how it is drawn (`m_hI`). */
+  league = 0;
 
   /** Slots holding the current and the next state; they swap after every accepted sub-step (`m_vaI`, `m_waI`). */
   current = 0;
@@ -264,7 +266,8 @@ export class Physics {
 
   /** `setLeague`. Also puts the bike back on the start, as in the original. */
   setLeague(league: number): void {
-    this.tuning = LEAGUES[league] ?? (LEAGUES[0] as LeagueTuning);
+    this.league = league >= 0 && league < LEAGUES.length ? league : 0;
+    this.tuning = LEAGUES[this.league] as LeagueTuning;
     this.reset();
   }
 

@@ -1,3 +1,13 @@
+@font-face {
+  font-family: "Roboto Condensed";
+  src: url("/assets/fonts/RobotoCondensed-Regular.ttf") format("truetype");
+  font-display: block;
+}
+
+:root {
+  --dp: 1;
+}
+
 html,
 body {
   height: 100%;
@@ -5,6 +15,7 @@ body {
   background: #fff;
   overflow: hidden;
   overscroll-behavior: none;
+  font-family: "Roboto Condensed", "Arial Narrow", sans-serif;
 }
 
 #game {
