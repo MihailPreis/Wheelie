@@ -202,8 +202,8 @@ test('a run is recorded and listed under My runs', async ({ page }) => {
   await expect(page.locator('.player')).toBeHidden();
   await expect(texts(page).nth(1)).toContainText('Result');
 
-  // Delete is the third action on the screen of a run.
-  await press(page, 'ArrowDown', 'ArrowDown', 'Enter');
+  // Delete is the fourth action on the screen of a run.
+  await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(texts(page).first()).toContainText('No runs yet');
 });
 
@@ -219,7 +219,7 @@ test('a run shared as a link opens as a replay in a fresh browser', async ({ pag
   await expect(title(page)).toHaveText('My runs');
 
   // The run → Share → Copy link.
-  await press(page, 'Enter', 'ArrowDown', 'Enter');
+  await press(page, 'Enter', 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('Share');
   await press(page, 'Enter');
   await expect(texts(page).nth(1)).toContainText('Link copied');
@@ -321,4 +321,43 @@ test('a track is made in the editor, test-driven and played as a pack', async ({
   await click('Play my tracks');
   await expect(title(page)).toHaveText('Play');
   await expect(page.locator('.menu-item', { hasText: 'Track' }).locator('.menu-value')).toHaveText('Bumpy road');
+});
+
+test('the fastest run on a track comes back as a ghost', async ({ page }) => {
+  const click = (label: string | RegExp) => page.locator('.menu-label', { hasText: label }).first().click();
+  const hasGhost = () =>
+    page.evaluate(() => (window as unknown as { wheelie: { game: { ghost: unknown } } }).wheelie.game.ghost !== null);
+
+  // The first run has nothing to race.
+  await press(page, 'Enter', 'Enter');
+  await expect(page.locator('.menu')).toBeHidden();
+  expect(await hasGhost()).toBe(false);
+  await page.keyboard.down('ArrowUp');
+  await expect(title(page)).toHaveText('Finished!', { timeout: 20_000 });
+  await page.keyboard.up('ArrowUp');
+  await click(/^Ok$/);
+
+  // The second one races the first.
+  await click(/^Restart/);
+  await expect(page.locator('.menu')).toBeHidden();
+  expect(await hasGhost()).toBe(true);
+
+  // With the option off there is no ghost…
+  await press(page, 'Escape');
+  await click('Options');
+  await page.locator('.menu-item', { hasText: 'Ghost' }).click();
+  await press(page, 'Escape');
+  await click(/^Restart/);
+  await expect(page.locator('.menu')).toBeHidden();
+  expect(await hasGhost()).toBe(false);
+
+  // …unless a run is picked to race against.
+  await press(page, 'Escape');
+  await click(/^Play Menu$/);
+  await click('Go to Main');
+  await click('My runs');
+  await page.locator('.menu-label', { hasText: 'Intro' }).last().click();
+  await click('Race this run');
+  await expect(page.locator('.menu')).toBeHidden();
+  expect(await hasGhost()).toBe(true);
 });

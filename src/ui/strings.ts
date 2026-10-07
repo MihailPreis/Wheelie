@@ -39,6 +39,7 @@ export const STRINGS = {
   editorTestFailed: 'The game cannot ride this track as it is.',
   myTracks: 'My tracks',
   watch: 'Watch',
+  race: 'Race this run',
   share: 'Share',
   copyLink: 'Copy link',
   shareVia: 'Share via..',
@@ -150,6 +151,7 @@ export const STRINGS = {
   lookAhead: 'Look ahead',
   vibrateOnTouch: 'Vibrate on touch',
   keyboardInMenu: 'Keyboard in menu',
+  ghost: 'Ghost',
   music: 'Music',
   sound: 'Sound',
   clearHighscore: 'Clear highscore',
@@ -192,6 +194,7 @@ The keysets apply to the digit keys and to the on-screen keypad, whose buttons s
 <b>Look ahead: On/Off</b><br>Default: &lt;On&gt;<br>Turns on and off smart camera movement.<br><br>
 <b>Vibrate on touch: On/Off</b><br>Default: &lt;On&gt;<br>Enables haptic feedback when you press the on-screen keys.<br><br>
 <b>Keyboard in menu: On/Off</b><br>Default: &lt;On&gt;<br>Turns on and off the on-screen keyboard in menus.<br><br>
+<b>Ghost: On/Off</b><br>Default: &lt;On&gt;<br>Shows your fastest run on the track as a faint bike to race against, with the gap to it under the clock.<br><br>
 <b>Music: On/Off</b><br>Default: &lt;On&gt;<br>Turns the background music on and off.<br><br>
 <b>Sound: On/Off</b><br>Default: &lt;On&gt;<br>Turns the engine and the sound effects on and off.<br><br>
 <b>Clear highscore</b><br>Lets you clear the highscores. Here you can also do a "Full Reset" which will reset the game to its original state (clear settings, highscores, unlocked levels and leagues).`,

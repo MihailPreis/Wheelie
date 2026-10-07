@@ -141,6 +141,7 @@ export class SceneRenderer {
     animator: Animator,
     league: number,
     options: SceneOptions,
+    ghost: Pose | null = null,
   ): void {
     this.ctx = ctx;
     this.dimmed = options.dimmed;
@@ -159,6 +160,21 @@ export class SceneRenderer {
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, viewport.width, viewport.height);
 
+    const visibleLeft = -this.originX / 8;
+    const visibleRight = (-this.originX + viewport.width) / 8;
+
+    if (options.perspective) this.drawTrackBack(terrain, pose, animator, visibleLeft, visibleRight, options.shadows);
+    if (ghost) {
+      // The rival of a recorded run: the same bike, faint, behind the player's.
+      ctx.globalAlpha = 0.3;
+      this.drawBike(ghost, league, options);
+      ctx.globalAlpha = 1;
+    }
+    this.drawBike(pose, league, options);
+    this.drawTrackFront(terrain, animator, visibleLeft, visibleRight);
+  }
+
+  private drawBike(pose: Pose, league: number, options: SceneOptions): void {
     // Physics._ifiV
     let alongX = (pose.x[3] as number) - (pose.x[4] as number);
     let alongY = (pose.y[3] as number) - (pose.y[4] as number);
@@ -170,10 +186,6 @@ export class SceneRenderer {
     const acrossX = -alongY;
     const acrossY = alongX;
 
-    const visibleLeft = -this.originX / 8;
-    const visibleRight = (-this.originX + viewport.width) / 8;
-
-    if (options.perspective) this.drawTrackBack(terrain, pose, animator, visibleLeft, visibleRight, options.shadows);
     if (options.bikeSprite) this.drawEngineAndFender(pose, alongX, alongY);
     if (!options.dimmed) this.drawWheelSprites(pose, league);
     this.drawWheelDetails(pose, league, options.dimmed);
@@ -187,7 +199,6 @@ export class SceneRenderer {
     }
     this.drawRider(pose, alongX, alongY, acrossX, acrossY, options.driverSprite);
     if (!options.bikeSprite) this.drawLineBike(pose, alongX, alongY, acrossX, acrossY);
-    this.drawTrackFront(terrain, animator, visibleLeft, visibleRight);
   }
 
   // ---- primitives -------------------------------------------------------------------------

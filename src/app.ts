@@ -157,6 +157,7 @@ export class App {
         open: (builder) => this.open(builder),
         parent: this.mainMenu,
         watch: (replay, back) => void this.watch(replay, back),
+        race: (replay, back) => void this.race(replay, back),
         importReplay: (bytes) => void this.importReplay(bytes),
         shareBaseUrl,
         sprites,
@@ -379,11 +380,50 @@ export class App {
     this.showFrontMenu(this.mainMenu);
   }
 
-  private play(level: number, track: number): void {
+  /** Starts a track; `rival` is a recorded run of it to race against. */
+  private play(level: number, track: number, rival: Replay | null = null): void {
+    if (this.launching) return;
+    this.launching = true;
+    void this.launch(level, track, rival).finally(() => {
+      this.launching = false;
+    });
+  }
+
+  private launching = false;
+
+  /** The player's own fastest finish on a track and league, as a ghost to beat. */
+  private async bestRun(level: number, track: number, league: number, data: Track): Promise<Uint8Array | null> {
+    const hash = hashTrack(data.data);
+    let best: Replay | null = null;
+    for (const stored of await this.replayStore.list()) {
+      if (
+        stored.outcome !== Outcome.Finished ||
+        stored.packId !== this.pack.id ||
+        stored.level !== level ||
+        stored.track !== track ||
+        stored.league !== league ||
+        (best && stored.time >= best.time)
+      ) {
+        continue;
+      }
+      try {
+        const replay = decodeReplay(stored.bytes);
+        // The track may have changed since, as tracks from the editor do.
+        if (replay.trackHash === hash && replay.physicsVersion === PHYSICS_VERSION) best = replay;
+      } catch {
+        // Not a ghost, then.
+      }
+    }
+    return best?.inputs ?? null;
+  }
+
+  private async launch(level: number, track: number, rival: Replay | null): Promise<void> {
     const data = this.trackAt(level, track);
     if (!data) return;
+    const league = rival?.league ?? this.progress.selectedLeague;
+    const ghost = rival?.inputs ?? (this.settings.ghost ? await this.bestRun(level, track, league, data) : null);
     try {
-      this.game.load(data, this.progress.selectedLeague);
+      this.game.load(data, league, false, ghost);
     } catch {
       // Some community packs contain a track that cannot be loaded. It counts as passed, or the
       // tracks behind it could never be unlocked.
@@ -623,6 +663,37 @@ export class App {
     }
   }
 
+  /** Starts the track of a saved run with that run as the ghost. */
+  private async race(stored: StoredReplay, back: ScreenBuilder): Promise<void> {
+    const fail = (text: string) => this.alert(S.myRuns, text, () => this.open(back));
+    let replay: Replay;
+    try {
+      replay = decodeReplay(stored.bytes);
+    } catch {
+      fail(S.replayDamaged);
+      return;
+    }
+    const found = await this.trackFor(replay);
+    if (typeof found === 'string') {
+      fail(found);
+      return;
+    }
+    // The race is run as part of the pack the track belongs to, so the result counts there.
+    if (replay.packId !== this.pack.id) {
+      const pack = replay.packId === ORIGINAL_PACK_ID ? this.original : await this.mods.obtain(replay.packId);
+      if (!pack) {
+        fail(S.replayNoPack);
+        return;
+      }
+      this.usePack(pack);
+    }
+    if (hashTrack(this.trackAt(replay.level, replay.track)?.data ?? found.track.data) !== replay.trackHash) {
+      fail(S.replayChangedTrack);
+      return;
+    }
+    this.play(replay.level, replay.track, replay);
+  }
+
   private afterWatching: ScreenBuilder | null = null;
 
   private stopWatching(): void {
@@ -645,7 +716,7 @@ export class App {
       return;
     }
     const time = Math.floor(result.time / 10);
-    const league = this.progress.selectedLeague;
+    const league = this.game.league;
     const scores = loadScores(this.pack.id, this.level, this.track);
     const place = placeOf(scores, league, time);
     if (place >= PLACES) {
@@ -691,7 +762,7 @@ export class App {
   /** `Menu.saveCompletedTrack`: unlocks what the run earned and shows the result. */
   private completed(scores: TrackScores, time: number): void {
     const { level, track } = this;
-    const league = this.progress.selectedLeague;
+    const league = this.game.league;
     const leagues = availableLeagues(this.progress);
     const outcome = completeTrack(this.progress, level, track, this.trackCounts);
     this.saveProgress();
@@ -897,7 +968,8 @@ export class App {
           | 'vibrate'
           | 'keypadInMenu'
           | 'music'
-          | 'sound',
+          | 'sound'
+          | 'ghost',
       ): MenuItem => ({
         kind: 'option',
         label,
@@ -933,6 +1005,7 @@ export class App {
           toggle(S.lookAhead, 'lookAhead'),
           toggle(S.vibrateOnTouch, 'vibrate'),
           toggle(S.keyboardInMenu, 'keypadInMenu'),
+          toggle(S.ghost, 'ghost'),
           toggle(S.music, 'music'),
           toggle(S.sound, 'sound'),
           this.link(S.clearHighscore, this.eraseScreen(self)),

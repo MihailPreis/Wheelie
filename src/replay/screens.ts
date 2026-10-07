@@ -18,6 +18,8 @@ export interface ReplaysHost {
   readonly parent: ScreenBuilder;
   /** Plays a run, then returns to `back`. */
   watch(replay: StoredReplay, back: ScreenBuilder): void;
+  /** Starts the track of a run with that run as the ghost. */
+  race(replay: StoredReplay, back: ScreenBuilder): void;
   /** Takes in a replay file from outside. */
   importReplay(bytes: Uint8Array): void;
   /** Address that replay links are built on. */
@@ -145,6 +147,7 @@ export class ReplayScreens {
           field(S.date, when(replay.date)),
           { kind: 'space', size: 10 },
           { kind: 'action', label: S.watch, run: () => this.host.watch(replay, self) },
+          { kind: 'action', label: S.race, run: () => this.host.race(replay, self) },
           { kind: 'action', label: S.share, run: () => this.host.open(this.shareScreen(replay, self, '')) },
           {
             kind: 'action',

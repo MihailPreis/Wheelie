@@ -17,6 +17,8 @@ export interface HudState {
   /** Race time in milliseconds, or `null` to hide the clock. */
   time: number | null;
   message: string | null;
+  /** Milliseconds behind (positive) or ahead of (negative) the ghost; `null` or absent for no ghost. */
+  gap?: number | null;
 }
 
 export function drawHud(ctx: CanvasRenderingContext2D, viewport: Viewport, hud: HudState): void {
@@ -31,6 +33,15 @@ export function drawHud(ctx: CanvasRenderingContext2D, viewport: Viewport, hud: 
     ctx.font = `18px ${GAME_FONT}`;
     ctx.textAlign = 'left';
     ctx.fillText(formatTime(Math.floor(hud.time / 10)), 18, 36);
+  }
+  if (hud.gap != null) {
+    const hundredths = Math.round(Math.abs(hud.gap) / 10);
+    const text = `${hud.gap > 0 ? '+' : '-'}${Math.floor(hundredths / 100)}.${String(hundredths % 100).padStart(2, '0')}`;
+    ctx.font = `14px ${GAME_FONT}`;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = hud.gap > 0 ? '#c00000' : '#29aa27';
+    ctx.fillText(text, 18, 54);
+    ctx.fillStyle = '#000';
   }
   if (hud.message) {
     ctx.font = `20px ${GAME_FONT}`;

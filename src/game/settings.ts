@@ -12,6 +12,8 @@ export interface Settings {
   vibrate: boolean;
   /** Keep the on-screen keypad visible in the menus. */
   keypadInMenu: boolean;
+  /** Race against the fastest run of one's own on the track. */
+  ghost: boolean;
   music: boolean;
   /** Engine and effects. */
   sound: boolean;
@@ -30,6 +32,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   lookAhead: true,
   vibrate: true,
   keypadInMenu: true,
+  ghost: true,
   music: true,
   sound: true,
   name: DEFAULT_NAME,
@@ -55,6 +58,7 @@ export function loadSettings(): Settings {
     'lookAhead',
     'vibrate',
     'keypadInMenu',
+    'ghost',
     'music',
     'sound',
   ] as const) {

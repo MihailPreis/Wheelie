@@ -148,6 +148,17 @@ export class Game {
   private throttle = false;
   private recorded: number[] = [];
   private playback: (Playback & { snapshots: SimSnapshot[] }) | null = null;
+  /** Inputs of the recorded run the player is racing, if any. */
+  private ghostInputs: Uint8Array | null = null;
+  private ghost: {
+    sim: Sim;
+    previous: Pose;
+    current: Pose;
+    blended: Pose;
+    /** The furthest the ghost has got by each tick, to tell how far ahead or behind the player is. */
+    reached: Float32Array;
+  } | null = null;
+  private furthest = 0;
 
   private message: string | null = null;
   private messageTicks = 0;
@@ -198,11 +209,12 @@ export class Game {
    * Puts the bike on the start of a track. With `demo` the built-in rider drives, for the scene
    * behind the menus. Throws if the track cannot be used.
    */
-  load(track: Track, league: number, demo = false): void {
+  load(track: Track, league: number, demo = false, ghost: Uint8Array | null = null): void {
     // Constructed first so an invalid track leaves the current run untouched.
     const sim = new Sim({ track: track.data, league, demo });
     this.endRun();
     this.playback = null;
+    this.ghostInputs = demo ? null : ghost;
     this.sim = sim;
     this.track = track;
     this.currentLeague = league;
@@ -214,6 +226,7 @@ export class Game {
   watch(track: Track, league: number, playback: Playback): void {
     const sim = new Sim({ track: track.data, league, demo: false });
     this.endRun();
+    this.ghostInputs = null;
     this.sim = sim;
     this.track = track;
     this.currentLeague = league;
@@ -322,6 +335,7 @@ export class Game {
     this.brokenTicks = 0;
     this.result = null;
     this.recorded = [];
+    this.startGhost();
     this.animator.reset();
     this.sim.capture(this.current);
     copyPose(this.current, this.previous);
@@ -331,6 +345,69 @@ export class Game {
     this.messageTicks = 0;
     if (showName) this.showMessage(this.track.name, TRACK_NAME_TICKS);
   }
+
+  /** Puts the ghost on the start line next to the player. */
+  private startGhost(): void {
+    this.ghost = null;
+    this.furthest = 0;
+    const inputs = this.ghostInputs;
+    if (!inputs || !this.track) return;
+    try {
+      // One pass over the recording up front gives how far the ghost has got at every tick.
+      const scout = new Sim({ track: this.track.data, league: this.currentLeague, demo: false });
+      const pose = createPose();
+      const reached = new Float32Array(inputs.length + 1);
+      let best = 0;
+      for (let tick = 0; tick < inputs.length; tick++) {
+        const code = inputs[tick] as number;
+        scout.step(inputThrottle(code), inputLean(code));
+        scout.capture(pose);
+        // Progress reads as complete before the start line; that is not "further".
+        if (scout.status !== Status.BeforeStart) best = Math.max(best, pose.progress / 65536);
+        reached[tick + 1] = best;
+      }
+      const sim = new Sim({ track: this.track.data, league: this.currentLeague, demo: false });
+      const ghost = { sim, previous: createPose(), current: createPose(), blended: createPose(), reached };
+      sim.capture(ghost.current);
+      copyPose(ghost.current, ghost.previous);
+      this.ghost = ghost;
+    } catch {
+      // No ghost, then.
+    }
+  }
+
+  private stepGhost(): void {
+    const ghost = this.ghost;
+    const inputs = this.ghostInputs;
+    if (!ghost || !inputs) return;
+    copyPose(ghost.current, ghost.previous);
+    if (ghost.sim.ticks >= inputs.length) return;
+    const code = inputs[ghost.sim.ticks] as number;
+    ghost.sim.step(inputThrottle(code), inputLean(code));
+    ghost.sim.capture(ghost.current);
+  }
+
+  /**
+   * Milliseconds the player is behind the ghost (negative: ahead), judged by when each of them
+   * first got as far along the track as the player is now.
+   */
+  private ghostGap(): number | null {
+    const ghost = this.ghost;
+    const sim = this.sim;
+    if (!ghost || !sim || sim.status === Status.BeforeStart || this.furthest <= 0) return null;
+    const reached = ghost.reached;
+    if ((reached[reached.length - 1] as number) < this.furthest) return null;
+    let low = 0;
+    let high = reached.length - 1;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if ((reached[middle] as number) >= this.furthest) high = middle;
+      else low = middle + 1;
+    }
+    return (this.furthestTick - low) * TICK_MILLISECONDS;
+  }
+
+  private furthestTick = 0;
 
   private showMessage(text: string, ticks: number): void {
     this.message = text;
@@ -446,12 +523,20 @@ export class Game {
     const status = sim.step(controls.throttle, controls.lean);
     this.throttle = controls.throttle > 0;
     if (!this.demo) this.recorded.push(inputCode(controls.throttle, controls.lean));
+    this.stepGhost();
     copyPose(this.current, this.previous);
     this.previousLookX = this.animator.lookX;
     this.previousLookY = this.animator.lookY;
     sim.capture(this.current);
     const viewport = this.viewport;
     this.animator.step(this.current, sim.terrain, this.lookAhead, Math.min(viewport.width, viewport.height));
+    if (this.ghost && this.phase === 'riding' && status === Status.Riding) {
+      const progress = this.current.progress / 65536;
+      if (progress > this.furthest) {
+        this.furthest = progress;
+        this.furthestTick = sim.ticks;
+      }
+    }
 
     if (this.demo) {
       // Menu.showMenu: the demo rider starts over as soon as the run ends in any way.
@@ -516,7 +601,19 @@ export class Game {
     this.animator.lookY = mix(this.previousLookY, lookY);
 
     const viewport = this.viewport;
-    this.renderer.draw(ctx, viewport, sim.terrain, blended, this.animator, sim.league, this.options);
+    let ghostPose: Pose | null = null;
+    if (this.ghost) {
+      const { previous, current, blended: mixed } = this.ghost;
+      copyPose(current, mixed);
+      for (let i = 0; i < mixed.x.length; i++) {
+        mixed.x[i] = mix(previous.x[i] as number, current.x[i] as number);
+        mixed.y[i] = mix(previous.y[i] as number, current.y[i] as number);
+        mixed.angle[i] = mix(previous.angle[i] as number, current.angle[i] as number);
+      }
+      mixed.riderLean = mix(previous.riderLean, current.riderLean);
+      ghostPose = mixed;
+    }
+    this.renderer.draw(ctx, viewport, sim.terrain, blended, this.animator, sim.league, this.options, ghostPose);
     this.animator.lookX = lookX;
     this.animator.lookY = lookY;
 
@@ -529,6 +626,7 @@ export class Game {
           ? this.playback.finishTime
           : sim.raceTime,
       message: this.message,
+      gap: this.ghostGap(),
     });
   }
 }
