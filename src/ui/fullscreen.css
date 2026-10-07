@@ -1,0 +1,32 @@
+/* Sits beside the in-game menu button, in the same faint grey. */
+.fullscreen-button {
+  position: fixed;
+  top: calc(var(--dp) * 8px + env(safe-area-inset-top, 0px));
+  right: calc(var(--dp) * 48px + env(safe-area-inset-right, 0px));
+  width: calc(var(--dp) * 36px);
+  height: calc(var(--dp) * 36px);
+  padding: calc(var(--dp) * 8px);
+  border: 0;
+  background: none;
+  color: #999;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fullscreen-button[hidden] {
+  display: none;
+}
+
+.fullscreen-button:hover,
+.fullscreen-button:active {
+  color: #000;
+}
+
+.fullscreen-button svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}

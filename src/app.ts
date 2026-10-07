@@ -46,7 +46,7 @@ import type { ReplayStore, StoredReplay } from './replay/store';
 import { removeAll, writeJson } from './storage/store';
 import type { Keypad } from './ui/keypad';
 import type { MenuItem, MenuKey, MenuView } from './ui/menu/view';
-import { STRINGS as S } from './ui/strings';
+import { chooseLanguage, currentLanguage, LANGUAGE_NAMES, LANGUAGES, STRINGS as S } from './ui/strings';
 
 /** Three seconds of riding; shorter unfinished runs are not kept. */
 const MIN_UNFINISHED_TICKS = 200;
@@ -572,7 +572,7 @@ export class App {
         { kind: 'text', html: escapeHtml(daily.pack.levels[daily.level]?.[daily.track]?.name ?? ''), big: true },
         dim(S.date, dayLabel(daily.day)),
         dim(S.league, LEAGUE_NAMES[daily.league] ?? ''),
-        dim(S.levels, daily.pack.author ? `${daily.pack.name} by ${daily.pack.author}` : daily.pack.name),
+        dim(S.levels, daily.pack.author ? S.packBy(daily.pack.name, daily.pack.author) : daily.pack.name),
         dim(S.dailyBest, best === null ? S.dailyNotYet : formatScoreTime(Math.floor(best / 10))),
         dim(S.dailyStreak, S.dailyDays(streak)),
         { kind: 'space', size: 10 },
@@ -1163,6 +1163,19 @@ export class App {
           toggle(S.vibrateOnTouch, 'vibrate'),
           toggle(S.keyboardInMenu, 'keypadInMenu'),
           toggle(S.ghost, 'ghost'),
+          {
+            kind: 'option',
+            label: S.language,
+            options: LANGUAGE_NAMES,
+            value: LANGUAGES.indexOf(currentLanguage()),
+            change: (value) => {
+              const language = LANGUAGES[value];
+              if (!language || language === currentLanguage()) return;
+              // Texts are picked at start-up, so the game starts over in the new language.
+              chooseLanguage(language);
+              location.reload();
+            },
+          },
           toggle(S.music, 'music'),
           toggle(S.sound, 'sound'),
           this.link(S.clearHighscore, this.eraseScreen(self)),

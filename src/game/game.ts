@@ -5,6 +5,7 @@ import { Animator } from '../render/animator';
 import { drawHud } from '../render/hud';
 import { type SceneOptions, SceneRenderer, type Viewport } from '../render/scene';
 import type { Sprites } from '../render/sprites';
+import { STRINGS } from '../ui/strings';
 import type { Input } from './input';
 
 /** Width in dp that the smaller side of the view is scaled to, roughly a phone in portrait. */
@@ -287,10 +288,10 @@ export class Game {
     if (!live) return;
     if (isDown(status) && !isDown(before)) {
       this.audio?.crash();
-      this.showMessage('Crashed', CRASH_RESTART_TICKS);
+      this.showMessage(STRINGS.crashed, CRASH_RESTART_TICKS);
     } else if (isFinished(status) && !isFinished(before)) {
       this.audio?.finish(sim.wheelie);
-      this.showMessage(sim.wheelie ? 'Wheelie!' : 'Finished', FINISH_TICKS);
+      this.showMessage(sim.wheelie ? STRINGS.wheelie : STRINGS.finishedMessage, FINISH_TICKS);
     }
   }
 
@@ -552,19 +553,19 @@ export class Game {
     if (status === Status.Broken && this.brokenTicks === 0) {
       this.brokenTicks = CRASH_RESTART_TICKS;
       this.audio?.crash();
-      this.showMessage('Crashed', CRASH_RESTART_TICKS);
+      this.showMessage(STRINGS.crashed, CRASH_RESTART_TICKS);
     } else if (status === Status.Crashed) {
       if (this.brokenTicks === 0) this.audio?.crash();
       this.phase = 'crashed';
       this.phaseTicks =
         this.brokenTicks > 0 ? Math.min(this.brokenTicks, HARD_CRASH_RESTART_TICKS) : HARD_CRASH_RESTART_TICKS;
-      this.showMessage('Crashed', CRASH_RESTART_TICKS);
+      this.showMessage(STRINGS.crashed, CRASH_RESTART_TICKS);
     } else if (status === Status.Finished || status === Status.FinishedLate) {
       this.phase = 'finished';
       this.phaseTicks = FINISH_TICKS;
       this.result = { time: sim.raceTime, wheelie: sim.wheelie };
       this.audio?.finish(sim.wheelie);
-      this.showMessage(sim.wheelie ? 'Wheelie!' : 'Finished', FINISH_TICKS);
+      this.showMessage(sim.wheelie ? STRINGS.wheelie : STRINGS.finishedMessage, FINISH_TICKS);
     }
   }
 

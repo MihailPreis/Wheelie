@@ -401,3 +401,28 @@ test('the daily track is offered, ridden and remembered apart from the packs', a
   await pick(page, 'Play Menu');
   await expect(page.locator('.menu-item', { hasText: 'Track' }).locator('.menu-value')).toHaveText('Intro');
 });
+
+test('the language is switched in the options and remembered', async ({ page }) => {
+  await pick(page, 'Options');
+  const language = page.locator('.menu-item', { hasText: 'Language' });
+  await expect(language.locator('.menu-value')).toHaveText('English');
+  await language.click();
+  await page.locator('.menu-item', { hasText: 'Русский' }).click();
+
+  // The game starts over in Russian.
+  await page.keyboard.press('Enter');
+  await expect(title(page)).toHaveText('Главное меню', { timeout: 10_000 });
+  await expect(items(page).first()).toHaveText('Игра');
+  expect(await page.evaluate(() => document.documentElement.lang)).toBe('ru');
+  await pick(page, 'Настройки');
+  await expect(page.locator('.menu-item', { hasText: 'Язык' }).locator('.menu-value')).toHaveText('Русский');
+});
+
+test('a browser set to Russian gets the game in Russian', async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'ru-RU' });
+  const page = await context.newPage();
+  await page.goto('/');
+  await page.keyboard.press('Enter');
+  await expect(title(page)).toHaveText('Главное меню', { timeout: 10_000 });
+  await context.close();
+});

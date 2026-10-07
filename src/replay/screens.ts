@@ -72,7 +72,7 @@ const field = (label: string, value: string): MenuItem => ({
   html: `<span class="menu-dim">${label}:</span> ${escapeHtml(value)}`,
 });
 const when = (milliseconds: number) =>
-  new Date(milliseconds).toLocaleString('en-GB', {
+  new Date(milliseconds).toLocaleString(S.locale, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',

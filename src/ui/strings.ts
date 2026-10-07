@@ -1,15 +1,25 @@
-import { APP_NAME, APP_TAGLINE } from '../config';
+import { APP_NAME } from '../config';
+import { readJson, writeJson } from '../storage/store';
+import { RU } from './strings-ru';
 
 /**
  * Every piece of interface text, in one place. The wording follows the original game
  * (`res/values/strings.xml` of the Android port) wherever the screen exists there.
  */
-export const STRINGS = {
+const EN = {
+  /** Locale for dates. */
+  locale: 'en-GB',
+  tagline: 'An unofficial fan-made web port of Gravity Defied',
+  language: 'Language',
+  levelNames: ['Easy', 'Medium', 'Hard'] as readonly string[],
+  packBy: (pack: string, author: string) => `${pack} by ${author}`,
   splashCredit: 'Based on Gravity Defied\n© 2004 Codebrew Software\nAndroid port by G. Klyushnikov and E. Zinoviev',
 
   main: 'Main',
   mods: 'Mods',
   myRuns: 'My runs',
+  fullscreenEnter: 'Full screen (F)',
+  fullscreenLeave: 'Leave full screen (F)',
   daily: 'Daily track',
   dailyUnavailable: 'The daily track could not be loaded. Check the connection and try again.',
   dailyBest: 'Your best today',
@@ -91,7 +101,7 @@ export const STRINGS = {
   downloadError: 'Cannot download levels list.',
   downloadInterrupted: 'Downloading was interrupted',
   sortBy: 'Sort by',
-  sortOrders: ['Popularity', 'Most recent', 'Oldest', 'Tracks count'],
+  sortOrders: ['Popularity', 'Most recent', 'Oldest', 'Tracks count'] as readonly string[],
   loadMore: (left: number) => `Load more (${left})`,
   author: 'Author',
   unknownAuthor: 'unknown',
@@ -137,7 +147,7 @@ export const STRINGS = {
   next: 'Next',
 
   finished: 'Finished!',
-  places: ['First place!', 'Second place!', 'Third place!'],
+  places: ['First place!', 'Second place!', 'Third place!'] as readonly string[],
   time: 'Time',
   name: 'Name',
   enterName: 'Enter Name',
@@ -154,7 +164,7 @@ export const STRINGS = {
   driverSprite: 'Driver sprite',
   bikeSprite: 'Bike sprite',
   input: 'Input',
-  keysets: ['Keyset 1', 'Keyset 2', 'Keyset 3'],
+  keysets: ['Keyset 1', 'Keyset 2', 'Keyset 3'] as readonly string[],
   lookAhead: 'Look ahead',
   vibrateOnTouch: 'Vibrate on touch',
   keyboardInMenu: 'Keyboard in menu',
@@ -205,7 +215,7 @@ The keysets apply to the digit keys and to the on-screen keypad, whose buttons s
 <b>Music: On/Off</b><br>Default: &lt;On&gt;<br>Turns the background music on and off.<br><br>
 <b>Sound: On/Off</b><br>Default: &lt;On&gt;<br>Turns the engine and the sound effects on and off.<br><br>
 <b>Clear highscore</b><br>Lets you clear the highscores. Here you can also do a "Full Reset" which will reset the game to its original state (clear settings, highscores, unlocked levels and leagues).`,
-  aboutText: `<b>${APP_NAME}</b><br>${APP_TAGLINE}.<br><br>
+  aboutText: `<b>${APP_NAME}</b><br>An unofficial fan-made web port of Gravity Defied.<br><br>
 This is a fan project. It is not affiliated with, endorsed by or connected to Codebrew Software. All rights to the original Gravity Defied, its name, logo, brand and original assets belong to Codebrew Software.<br><br>
 <b>Gravity Defied - Trial Racing</b> by Codebrew Software<br>codebrew.se &copy; 2004<br><br>
 <b>Gravity Defied Classic</b> for Android by Gregory Klyushnikov and Evgeny Zinoviev<br>gdtr.net &copy; 2014<br><br>
@@ -216,4 +226,29 @@ Source code, under the GNU GPL v2:<br>github.com/MihailPreis/Wheelie`,
   crashed: 'Crashed',
   wheelie: 'Wheelie!',
   finishedMessage: 'Finished',
-} as const;
+};
+
+export type Strings = typeof EN;
+
+export const LANGUAGES = ['en', 'ru'] as const;
+export type Language = (typeof LANGUAGES)[number];
+/** Each language under its own name, in the order of {@link LANGUAGES}. */
+export const LANGUAGE_NAMES: readonly string[] = ['English', 'Русский'];
+
+const LANGUAGE_KEY = 'language';
+const TABLES: Record<Language, Strings> = { en: EN, ru: RU };
+
+/** The language chosen in the options or, failing that, the browser's, if the game speaks it. */
+export function currentLanguage(): Language {
+  const stored = readJson<unknown>(LANGUAGE_KEY);
+  if (stored === 'en' || stored === 'ru') return stored;
+  const preferred = typeof navigator === 'undefined' ? '' : (navigator.language ?? '');
+  return preferred.toLowerCase().startsWith('ru') ? 'ru' : 'en';
+}
+
+/** Remembers a language. Texts are picked once, at start-up, so the page has to be loaded again. */
+export function chooseLanguage(language: Language): void {
+  writeJson(LANGUAGE_KEY, language);
+}
+
+export const STRINGS: Strings = TABLES[currentLanguage()];

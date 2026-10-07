@@ -2,7 +2,7 @@ import { ACTIVE_PACK_KEY, App } from './app';
 import { Music } from './audio/music';
 import { AudioOutput } from './audio/output';
 import { Sound } from './audio/sound';
-import { APP_NAME, APP_TAGLINE, resolveShareBaseUrl } from './config';
+import { APP_NAME, resolveShareBaseUrl } from './config';
 import { Drafts } from './editor/drafts';
 import { Editor } from './editor/editor';
 import { Game } from './game/game';
@@ -16,9 +16,10 @@ import { isReplayFragment } from './replay/share';
 import { ReplayStore } from './replay/store';
 import { readJson } from './storage/store';
 import './style.css';
+import { createFullscreenButton, toggleFullscreen } from './ui/fullscreen';
 import { Keypad } from './ui/keypad';
 import { MenuView } from './ui/menu/view';
-import { STRINGS } from './ui/strings';
+import { currentLanguage, STRINGS } from './ui/strings';
 
 /** How long each of the two opening screens stays up, in milliseconds. */
 const SPLASH_MILLISECONDS = 1200;
@@ -63,7 +64,7 @@ async function splash<T>(base: string, work: Promise<T>, brief: boolean): Promis
     logo.src = `${base}assets/brand/wordmark.svg`;
     logo.alt = APP_NAME;
     const tagline = element('div', 'splash-tagline');
-    tagline.textContent = APP_TAGLINE;
+    tagline.textContent = STRINGS.tagline;
     content.append(logo, tagline);
     await hold(0, 0.5);
 
@@ -112,6 +113,7 @@ async function main(): Promise<void> {
   if (!canvas) throw new Error('Game canvas is missing');
   const base = import.meta.env.BASE_URL;
   const root = document.documentElement;
+  root.lang = currentLanguage();
 
   // Sizes everywhere are in dp; this is the same scale the game picks for the scene.
   const dp = () => Math.max(1, Math.min(window.innerWidth, window.innerHeight) / 360);
@@ -144,7 +146,14 @@ async function main(): Promise<void> {
   dots.alt = '';
   menuButton.append(dots);
   menuButton.hidden = true;
-  document.body.append(menu.element, keypad.element, menuButton, controls.element, editor.element);
+  document.body.append(
+    menu.element,
+    keypad.element,
+    menuButton,
+    createFullscreenButton(),
+    controls.element,
+    editor.element,
+  );
 
   const layout = () => {
     root.style.setProperty('--dp', String(game.scale));
@@ -185,6 +194,8 @@ async function main(): Promise<void> {
   window.addEventListener('keydown', (event) => {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     if (app.keyDown(event)) event.preventDefault();
+    // F is free everywhere except where text is being typed.
+    else if (event.code === 'KeyF' && !event.repeat && !(event.target instanceof HTMLInputElement)) toggleFullscreen();
   });
   window.addEventListener('keyup', (event) => input.keyUp(event.code));
   window.addEventListener('pointerdown', (event) => {

@@ -1,4 +1,5 @@
 import { readJson, writeJson } from '../storage/store';
+import { STRINGS } from '../ui/strings';
 
 /**
  * The daily track: one track of the bundled level packs, the same for everyone on the same day.
@@ -25,7 +26,7 @@ const LEAGUES = 3;
 export const dayOf = (milliseconds: number) => Math.floor(milliseconds / DAY_MILLISECONDS);
 
 export const dayLabel = (day: number) =>
-  new Date(day * DAY_MILLISECONDS).toLocaleDateString('en-GB', {
+  new Date(day * DAY_MILLISECONDS).toLocaleDateString(STRINGS.locale, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',

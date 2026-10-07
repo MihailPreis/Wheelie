@@ -67,11 +67,20 @@ jobs:
           pnpm check
           pnpm test
 
-      - name: Build
+      # Builds dist/ and zips it for itch.io; the same build goes to Pages below.
+      - name: Build and package
         if: steps.detect.outputs.ready == 'true'
         env:
           VITE_SHARE_BASE_URL: ${{ steps.share.outputs.url }}
-        run: pnpm build
+        run: pnpm package:itch
+
+      - name: Upload release archive
+        if: steps.detect.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheelie-itch
+          path: itch/*.zip
+          if-no-files-found: error
 
       - name: Upload Pages artifact
         if: steps.detect.outputs.ready == 'true'

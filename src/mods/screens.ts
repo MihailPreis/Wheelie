@@ -38,7 +38,7 @@ const field = (label: string, value: string): MenuItem => ({
   html: `<span class="menu-dim">${label}:</span> ${escapeHtml(value)}`,
 });
 const date = (milliseconds: number) =>
-  new Date(milliseconds).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  new Date(milliseconds).toLocaleDateString(S.locale, { day: 'numeric', month: 'short', year: 'numeric' });
 const catalogId = (pack: CatalogPack) => `gdtr-${pack.id}`;
 
 async function fileId(bytes: Uint8Array<ArrayBuffer>): Promise<string> {

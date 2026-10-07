@@ -1,4 +1,5 @@
 import { readJson, writeJson } from '../storage/store';
+import { STRINGS } from '../ui/strings';
 
 /**
  * What the player has unlocked in one level pack, and what they last selected. The rules follow
@@ -17,7 +18,7 @@ export interface Progress {
   selectedLeague: number;
 }
 
-export const LEVEL_NAMES = ['Easy', 'Medium', 'Hard'] as const;
+export const LEVEL_NAMES = STRINGS.levelNames;
 export const LEAGUE_NAMES = ['100cc', '175cc', '220cc', '325cc'] as const;
 /** Entering this name unlocks everything, as in the original. */
 const CHEAT_NAME = 'RKE';
