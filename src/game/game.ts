@@ -88,7 +88,7 @@ export interface GameAudio {
   finish(wheelie: boolean): void;
 }
 
-function copyPose(from: Pose, to: Pose): void {
+export function copyPose(from: Pose, to: Pose): void {
   to.x.set(from.x);
   to.y.set(from.y);
   to.angle.set(from.angle);

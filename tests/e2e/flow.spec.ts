@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
 
 // Walks the menus the way a player would. Runs against the dev server, which exposes a handle to
@@ -225,6 +226,23 @@ test('a run shared as a link opens as a replay in a fresh browser', async ({ pag
   const link = await page.evaluate(() => navigator.clipboard.readText());
   expect(link).toMatch(/#r=[dp][A-Za-z0-9_-]+$/);
   expect(link.length).toBeLessThan(400);
+
+  // The same screen exports the run as a picture and as an animation.
+  const save = async (label: RegExp, magic: string, extension: string) => {
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.locator('.menu-label', { hasText: label }).first().click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(new RegExp(`\\.${extension}$`));
+    const bytes = readFileSync(await download.path());
+    expect(bytes.subarray(0, magic.length).toString('latin1')).toBe(magic);
+    return bytes;
+  };
+  const card = await save(/^Save image$/, '\x89PNG', 'png');
+  expect([card.readUInt32BE(16), card.readUInt32BE(20)]).toEqual([1200, 630]);
+  const gif = await save(/^Save GIF$/, 'GIF89a', 'gif');
+  expect([gif.readUInt16LE(6), gif.readUInt16LE(8)]).toEqual([480, 270]);
+  await expect(texts(page).nth(1)).toContainText('GIF saved');
 
   // Someone else opens it: no splash to sit through, no menu, the replay itself.
   const other = await browser.newContext();

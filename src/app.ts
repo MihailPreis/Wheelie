@@ -33,6 +33,7 @@ import type { Library } from './mods/library';
 import { ORIGINAL_PACK_ID, type Pack } from './mods/pack';
 import { ModsScreens, type ScreenBuilder } from './mods/screens';
 import type { PlayerControls } from './player/controls';
+import type { Sprites } from './render/sprites';
 import { ReplayScreens } from './replay/screens';
 import { decodeFragment, isReplayFragment } from './replay/share';
 import { verifyReplay } from './replay/simulate';
@@ -109,6 +110,7 @@ export class App {
     private readonly replayStore: ReplayStore,
     baseUrl: string,
     shareBaseUrl: string,
+    sprites: Sprites,
     private readonly game: Game,
     private readonly input: Input,
     private readonly keypad: Keypad,
@@ -148,6 +150,24 @@ export class App {
         watch: (replay, back) => void this.watch(replay, back),
         importReplay: (bytes) => void this.importReplay(bytes),
         shareBaseUrl,
+        sprites,
+        logoUrl: `${baseUrl}assets/brand/wordmark.svg`,
+        sceneOptions: () => this.game.options,
+        exportSource: async (stored) => {
+          let replay: Replay;
+          try {
+            replay = decodeReplay(stored.bytes);
+          } catch {
+            return S.replayDamaged;
+          }
+          const found = await this.trackFor(replay);
+          if (typeof found === 'string') return found;
+          return {
+            film: { track: found.track.data, league: replay.league, inputs: replay.inputs, finishTime: replay.time },
+            packName: found.packName,
+            packAuthor: found.packAuthor,
+          };
+        },
       },
       replayStore,
     );
@@ -400,11 +420,11 @@ export class App {
   // ---- watching a replay ------------------------------------------------------------------
 
   /** The track a replay was made on, or the reason it cannot be shown. */
-  private async trackFor(replay: Replay): Promise<{ track: Track; packName: string } | string> {
+  private async trackFor(replay: Replay): Promise<{ track: Track; packName: string; packAuthor: string } | string> {
     if (replay.physicsVersion !== PHYSICS_VERSION) return S.replayOtherVersion;
     if (replay.trackData) {
       if (hashTrack(replay.trackData) !== replay.trackHash) return S.replayDamaged;
-      return { track: { name: replay.trackName, data: replay.trackData }, packName: S.ownLevels };
+      return { track: { name: replay.trackName, data: replay.trackData }, packName: S.ownLevels, packAuthor: '' };
     }
     let pack: Pack | null = null;
     if (replay.packId === this.pack.id) pack = this.pack;
@@ -413,7 +433,9 @@ export class App {
     else pack = await this.mods.obtain(replay.packId);
     const track = pack?.levels[replay.level]?.[replay.track];
     if (!pack || !track) return S.replayNoPack;
-    return hashTrack(track.data) === replay.trackHash ? { track, packName: pack.name } : S.replayChangedTrack;
+    return hashTrack(track.data) === replay.trackHash
+      ? { track, packName: pack.name, packAuthor: pack.author }
+      : S.replayChangedTrack;
   }
 
   /** Plays a saved run; `back` is the screen to return to afterwards. */

@@ -44,3 +44,7 @@ sources with `node tools/render-brand.mjs`.
 `mods-src/` mirrors the level packs published on [gdtr.net](https://gdtr.net/levels/) (996 packs as of
 2026-10-08), fetched with `tools/mods/mirror.mjs`. The files are unchanged; names, authors and dates
 come from the site's catalogue. The packs are the work of their authors, who are named in the game.
+
+## Libraries
+
+- [gifenc](https://github.com/mattdesl/gifenc) by Matt DesLauriers (MIT) encodes the animated GIF export.
