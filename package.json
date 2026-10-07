@@ -1,0 +1,28 @@
+{
+  "name": "wheelie",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Wheelie! — an unofficial fan-made web port of Gravity Defied",
+  "license": "GPL-2.0-only",
+  "type": "module",
+  "packageManager": "pnpm@12.10.1",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "biome check . && tsc -p tsconfig.json && tsc -p tsconfig.core.json && tsc -p tsconfig.node.json",
+    "format": "biome check --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "reference:fetch": "node tools/fetch-reference.mjs"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.4",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.3",
+    "vitest": "^5.0.3"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  // The deterministic core must not depend on the DOM or any host API:
+  // this config type-checks it with no DOM lib and no ambient types.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": []
+  },
+  "include": ["src/core", "src/formats"],
+  "exclude": ["**/*.test.ts"]
+}

@@ -1,0 +1,24 @@
+# Local clone of the original Android sources (reference only, see tools/fetch-reference.mjs)
+/reference/
+
+# Dependencies and build output
+node_modules/
+dist/
+*.zip
+*.tsbuildinfo
+
+# Test output
+coverage/
+test-results/
+playwright-report/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/
+*.log

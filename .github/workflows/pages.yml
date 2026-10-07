@@ -1,0 +1,94 @@
+name: Deploy to GitHub Pages
+
+# Requires Settings → Pages → Source = "GitHub Actions".
+#
+# VITE_SHARE_BASE_URL is the base address baked into replay share links. It defaults to this
+# repository's Pages URL; set the repository variable SHARE_BASE_URL to override it
+# (for example when a custom domain is configured).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.detect.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Until the app is scaffolded there is nothing to build.
+      - name: Detect app
+        id: detect
+        run: |
+          if [ -f package.json ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No package.json yet — skipping build and deploy."
+          fi
+
+      - name: Resolve share base URL
+        id: share
+        if: steps.detect.outputs.ready == 'true'
+        env:
+          SHARE_BASE_URL: ${{ vars.SHARE_BASE_URL }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          url="${SHARE_BASE_URL:-https://${OWNER,,}.github.io/${REPO}/}"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+        if: steps.detect.outputs.ready == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.detect.outputs.ready == 'true'
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        if: steps.detect.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Check and test
+        if: steps.detect.outputs.ready == 'true'
+        run: |
+          pnpm check
+          pnpm test
+
+      - name: Build
+        if: steps.detect.outputs.ready == 'true'
+        env:
+          VITE_SHARE_BASE_URL: ${{ steps.share.outputs.url }}
+        run: pnpm build
+
+      - name: Upload Pages artifact
+        if: steps.detect.outputs.ready == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
