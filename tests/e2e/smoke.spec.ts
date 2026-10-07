@@ -18,6 +18,17 @@ test('page loads and the game canvas fills the viewport', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('the game works offline once it has been opened', async ({ page, context }) => {
+  await page.goto('/');
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
+
+  await context.setOffline(true);
+  await page.reload();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.menu-title')).toHaveText('Main', { timeout: 10_000 });
+});
+
 test('the track is drawn and the bike moves under throttle', async ({ page }) => {
   await page.goto('/');
   const canvas = page.locator('#game');

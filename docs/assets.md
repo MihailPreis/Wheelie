@@ -31,3 +31,10 @@ the Android port by its authors.
 
 The file is the original Ogg Vorbis, unmodified: it is authored to loop seamlessly, and re-encoding
 or converting it to MP3 would add a gap at the loop point.
+
+## Brand
+
+`public/assets/brand/wordmark.svg` and `public/favicon.svg` are this project's own logo. The letters are
+outlines of Roboto Condensed Bold Italic (SIL Open Font License 1.1). The PNG files next to them
+(`preview.png` for link previews, `icon-512.png`, `apple-touch-icon.png`) are rendered from the SVG
+sources with `node tools/render-brand.mjs`.

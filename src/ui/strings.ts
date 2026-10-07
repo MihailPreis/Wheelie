@@ -5,6 +5,8 @@ import { APP_NAME, APP_TAGLINE } from '../config';
  * (`res/values/strings.xml` of the Android port) wherever the screen exists there.
  */
 export const STRINGS = {
+  splashCredit: 'Based on Gravity Defied\n© 2004 Codebrew Software\nAndroid port by evgenyzinoviev',
+
   main: 'Main',
   playMenu: 'Play Menu',
   play: 'Play',

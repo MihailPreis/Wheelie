@@ -178,12 +178,15 @@
 }
 
 .splash-logo {
-  width: calc(var(--dp) * 120px);
+  display: block;
+  width: calc(var(--dp) * 260px);
+  margin: 0 auto;
 }
 
-.splash-title {
-  font-size: calc(var(--dp) * 54px);
-  line-height: 1;
+.splash-credit {
+  font-size: calc(var(--dp) * 18px);
+  line-height: 1.5;
+  white-space: pre-line;
 }
 
 .splash-tagline {

@@ -9,6 +9,7 @@ import { loadSprites } from './render/sprites';
 import './style.css';
 import { Keypad } from './ui/keypad';
 import { MenuView } from './ui/menu/view';
+import { STRINGS } from './ui/strings';
 
 /** How long each of the two opening screens stays up, in milliseconds. */
 const SPLASH_MILLISECONDS = 1200;
@@ -20,8 +21,8 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, className: strin
 }
 
 /**
- * The opening screens of the original — the Codebrew logo, then the game's own — over a progress
- * bar. They stay up while `work` runs and can be skipped once it is done.
+ * Two opening screens over a progress bar, as in the original: this game's logo, then the credit
+ * for the game it is a port of. They stay up while `work` runs and can be skipped once it is done.
  */
 async function splash<T>(base: string, work: Promise<T>): Promise<T> {
   const root = element('div', 'splash');
@@ -49,16 +50,16 @@ async function splash<T>(base: string, work: Promise<T>): Promise<T> {
 
   try {
     const logo = element('img', 'splash-logo');
-    logo.src = `${base}assets/sprites/2x/codebrew.png`;
-    logo.alt = 'Codebrew Software';
-    content.append(logo);
-    await hold(0, 0.5);
-
-    const title = element('div', 'splash-title');
-    title.textContent = APP_NAME;
+    logo.src = `${base}assets/brand/wordmark.svg`;
+    logo.alt = APP_NAME;
     const tagline = element('div', 'splash-tagline');
     tagline.textContent = APP_TAGLINE;
-    content.replaceChildren(title, tagline);
+    content.append(logo, tagline);
+    await hold(0, 0.5);
+
+    const credit = element('div', 'splash-credit');
+    credit.textContent = STRINGS.splashCredit;
+    content.replaceChildren(credit);
     const result = await work;
     skipped = false;
     await hold(0.5, 1);
@@ -153,6 +154,13 @@ async function main(): Promise<void> {
 
   // A handle for the browser tests, which cannot ride a track to the finish by themselves.
   if (import.meta.env.DEV) Object.assign(window, { wheelie: { game } });
+
+  // Offline play and installation as an app. Development always loads fresh code.
+  if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+    navigator.serviceWorker
+      .register(`${base}sw.js`)
+      .catch((error) => console.warn('Offline mode is unavailable:', error));
+  }
 
   layout();
   app.start();
