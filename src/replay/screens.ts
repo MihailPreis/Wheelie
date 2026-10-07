@@ -165,6 +165,11 @@ export class ReplayScreens {
     return self;
   }
 
+  /** Opens the sharing options of a run from elsewhere in the menus. */
+  share(replay: StoredReplay, back: ScreenBuilder): void {
+    this.host.open(this.shareScreen(replay, back, ''));
+  }
+
   // ---- sharing ----------------------------------------------------------------------------
 
   private shareScreen(replay: StoredReplay, parent: ScreenBuilder, status: string): ScreenBuilder {

@@ -8,6 +8,11 @@ const title = (page: Page) => page.locator('.menu-title');
 const items = (page: Page) => page.locator('.menu-item .menu-label');
 const texts = (page: Page) => page.locator('.menu-text');
 
+/** Chooses a menu item by its label. */
+async function pick(page: Page, label: string): Promise<void> {
+  await page.locator('.menu-label', { hasText: label }).first().click();
+}
+
 async function press(page: Page, ...keys: string[]): Promise<void> {
   for (const key of keys) await page.keyboard.press(key);
 }
@@ -27,9 +32,18 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('main menu leads to every section and back', async ({ page }) => {
-  await expect(items(page)).toHaveText(['Play Menu', 'Mods', 'My runs', 'Editor', 'Options', 'Help', 'About']);
+  await expect(items(page)).toHaveText([
+    'Play Menu',
+    'Daily track',
+    'Mods',
+    'My runs',
+    'Editor',
+    'Options',
+    'Help',
+    'About',
+  ]);
 
-  await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
+  await pick(page, 'Help');
   await expect(title(page)).toHaveText('Help');
   await press(page, 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('Keys');
@@ -43,7 +57,7 @@ test('main menu leads to every section and back', async ({ page }) => {
 });
 
 test('options are toggled and remembered', async ({ page }) => {
-  await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
+  await pick(page, 'Options');
   await expect(title(page)).toHaveText('Options');
   const perspective = page.locator('.menu-item', { hasText: 'Perspective' }).locator('.menu-value');
   await expect(perspective).toHaveText('On');
@@ -53,7 +67,7 @@ test('options are toggled and remembered', async ({ page }) => {
   await page.reload();
   await page.keyboard.press('Enter');
   await expect(title(page)).toHaveText('Main', { timeout: 10_000 });
-  await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
+  await pick(page, 'Options');
   await expect(perspective).toHaveText('Off');
 });
 
@@ -113,7 +127,7 @@ test('a finished run records a score, unlocks the next track and offers it', asy
 test('a level pack is installed from the catalogue, played and deleted', async ({ page }) => {
   const activePack = () => page.evaluate(() => localStorage.getItem('wheelie.activePack'));
 
-  await press(page, 'ArrowDown', 'Enter');
+  await pick(page, 'Mods');
   await expect(title(page)).toHaveText('Mods');
   await press(page, 'Enter');
   await expect(items(page).first()).toContainText('Sort by', { timeout: 10_000 });
@@ -138,7 +152,8 @@ test('a level pack is installed from the catalogue, played and deleted', async (
   await expect(title(page)).toHaveText('Main', { timeout: 10_000 });
   expect(await activePack()).toMatch(/^"gdtr-\d+"$/);
 
-  await press(page, 'ArrowDown', 'Enter', 'ArrowDown', 'Enter');
+  await pick(page, 'Mods');
+  await pick(page, 'Installed mods');
   await expect(title(page)).toHaveText('Installed mods');
   await expect(items(page).nth(1)).toContainText('active');
   await press(page, 'ArrowDown', 'Enter');
@@ -160,7 +175,8 @@ test('a run is recorded and listed under My runs', async ({ page }) => {
   await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('Play');
 
-  await press(page, 'Escape', 'ArrowDown', 'ArrowDown', 'Enter');
+  await press(page, 'Escape');
+  await pick(page, 'My runs');
   await expect(title(page)).toHaveText('My runs');
   await expect(items(page)).toHaveCount(3);
   await expect(items(page).first()).toContainText('100cc');
@@ -169,7 +185,7 @@ test('a run is recorded and listed under My runs', async ({ page }) => {
   await page.reload();
   await page.keyboard.press('Enter');
   await expect(title(page)).toHaveText('Main', { timeout: 10_000 });
-  await press(page, 'ArrowDown', 'ArrowDown', 'Enter');
+  await pick(page, 'My runs');
   await expect(items(page)).toHaveCount(3);
   await press(page, 'Enter');
   await expect(texts(page).nth(1)).toContainText('Result');
@@ -215,7 +231,8 @@ test('a run shared as a link opens as a replay in a fresh browser', async ({ pag
   await page.waitForTimeout(4000);
   await page.keyboard.up('ArrowUp');
   await press(page, 'Escape', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
-  await press(page, 'Escape', 'ArrowDown', 'ArrowDown', 'Enter');
+  await press(page, 'Escape');
+  await pick(page, 'My runs');
   await expect(title(page)).toHaveText('My runs');
 
   // The run → Share → Copy link.
@@ -257,9 +274,7 @@ test('a run shared as a link opens as a replay in a fresh browser', async ({ pag
   // Leaving the replay leads to the menu, and the run is now among the visitor's own.
   await visitor.keyboard.press('Escape');
   await expect(visitor.locator('.menu-title')).toHaveText('Main');
-  await visitor.keyboard.press('ArrowDown');
-  await visitor.keyboard.press('ArrowDown');
-  await visitor.keyboard.press('Enter');
+  await pick(visitor, 'My runs');
   await expect(visitor.locator('.menu-item .menu-label')).toHaveCount(3);
   await other.close();
 });
@@ -360,4 +375,29 @@ test('the fastest run on a track comes back as a ghost', async ({ page }) => {
   await click('Race this run');
   await expect(page.locator('.menu')).toBeHidden();
   expect(await hasGhost()).toBe(true);
+});
+
+test('the daily track is offered, ridden and remembered apart from the packs', async ({ page }) => {
+  await pick(page, 'Daily track');
+  await expect(items(page).first()).toHaveText('Start>', { timeout: 15_000 });
+  await expect(texts(page).nth(4)).toContainText('not finished yet');
+  const name = await texts(page).first().textContent();
+  expect(name?.length).toBeGreaterThan(0);
+
+  await pick(page, 'Start>');
+  await expect(page.locator('.menu')).toBeHidden();
+  await finishRun(page, 12_340);
+  await expect(title(page)).toHaveText('Finished!');
+  await expect(texts(page).first()).toHaveText('00:12.34');
+  await expect(texts(page).nth(1)).toHaveText('Your best today!');
+  await expect(texts(page).nth(2)).toContainText('1');
+
+  // Back on its screen the result shows, and the original tracks are untouched by it.
+  await pick(page, 'Daily track');
+  await expect(texts(page).first()).toHaveText(name ?? '');
+  await expect(texts(page).nth(4)).toContainText('00:12.34');
+  await expect(texts(page).nth(5)).toContainText('1');
+  await press(page, 'Escape');
+  await pick(page, 'Play Menu');
+  await expect(page.locator('.menu-item', { hasText: 'Track' }).locator('.menu-value')).toHaveText('Intro');
 });

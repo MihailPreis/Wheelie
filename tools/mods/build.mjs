@@ -70,4 +70,6 @@ for (const pack of catalogue) {
 await flush();
 
 await writeFile(new URL('catalog.json', OUT), JSON.stringify({ version: 1, chunks, packs }));
+// The tracks the daily track is drawn from; see tools/mods/daily.mjs.
+await writeFile(new URL('daily.json', OUT), await readFile(new URL('daily.json', SOURCE)));
 console.log(`${packs.length} packs in ${chunks.length} chunks; ${broken} unreadable, ${absent} without a file`);

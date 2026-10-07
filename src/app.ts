@@ -1,6 +1,7 @@
 import type { Music } from './audio/music';
 import type { Sound } from './audio/sound';
 import { PHYSICS_VERSION } from './core/version';
+import { dailyBest, dailyStreak, dayLabel, dayOf, parseCandidates, pickDaily, recordDaily } from './daily/daily';
 import type { Drafts } from './editor/drafts';
 import type { Editor } from './editor/editor';
 import { type EditorTrack, toTrackData } from './editor/model';
@@ -98,6 +99,12 @@ export class App {
   private readonly editorScreens: EditorScreens;
   /** A track from the editor is being tried out. */
   private testing = false;
+  /** The pack the track being ridden belongs to; not the active pack on a daily track. */
+  private runPack: Pack;
+  /** The daily track, once it has been looked up. */
+  private daily: { day: number; pack: Pack; level: number; track: number; league: number } | null = null;
+  /** The run in progress is on the daily track. */
+  private ridingDaily = false;
   private readonly padNavigator = new GamepadNavigator();
 
   private current: ScreenBuilder | null = null;
@@ -131,6 +138,8 @@ export class App {
     private readonly onLayout: () => void,
     private readonly onReset: () => void,
   ) {
+    this.runPack = pack;
+    this.baseUrl = baseUrl;
     this.trackCounts = pack.levels.map((level) => level.length);
     this.progress = loadProgress(pack.id, this.trackCounts);
     if (isCheatName(this.settings.name)) unlockEverything(this.progress, this.trackCounts);
@@ -361,6 +370,7 @@ export class App {
   /** The menus outside a run, with the demo rider on the selected track behind them. */
   private showFrontMenu(builder: ScreenBuilder): void {
     this.playing = false;
+    this.ridingDaily = false;
     this.game.paused = false;
     this.loadDemo();
     this.showMenu(builder);
@@ -390,15 +400,22 @@ export class App {
   }
 
   private launching = false;
+  private readonly baseUrl: string;
 
   /** The player's own fastest finish on a track and league, as a ghost to beat. */
-  private async bestRun(level: number, track: number, league: number, data: Track): Promise<Uint8Array | null> {
+  private async bestRun(
+    packId: string,
+    level: number,
+    track: number,
+    league: number,
+    data: Track,
+  ): Promise<Uint8Array | null> {
     const hash = hashTrack(data.data);
     let best: Replay | null = null;
     for (const stored of await this.replayStore.list()) {
       if (
         stored.outcome !== Outcome.Finished ||
-        stored.packId !== this.pack.id ||
+        stored.packId !== packId ||
         stored.level !== level ||
         stored.track !== track ||
         stored.league !== league ||
@@ -421,7 +438,8 @@ export class App {
     const data = this.trackAt(level, track);
     if (!data) return;
     const league = rival?.league ?? this.progress.selectedLeague;
-    const ghost = rival?.inputs ?? (this.settings.ghost ? await this.bestRun(level, track, league, data) : null);
+    const ghost =
+      rival?.inputs ?? (this.settings.ghost ? await this.bestRun(this.pack.id, level, track, league, data) : null);
     try {
       this.game.load(data, league, false, ghost);
     } catch {
@@ -434,6 +452,8 @@ export class App {
     }
     this.level = level;
     this.track = track;
+    this.runPack = this.pack;
+    this.ridingDaily = false;
     this.playing = true;
     this.game.paused = false;
     this.game.hud = true;
@@ -446,6 +466,11 @@ export class App {
   private pause(): void {
     if (this.testing) {
       this.stopTest('');
+      return;
+    }
+    if (this.ridingDaily && this.playing && !this.menu.visible && this.game.riding) {
+      this.game.paused = true;
+      this.showMenu(this.dailyPauseMenu);
       return;
     }
     if (!this.playing || this.menu.visible || !this.game.riding) return;
@@ -465,13 +490,13 @@ export class App {
   /** Keeps a run as a replay, once riding it again has been seen to end the same way. */
   private recordRun(run: RecordedRun): void {
     if (this.testing) return;
-    const track = this.trackAt(this.level, this.track);
+    const track = this.runPack.levels[this.level]?.[this.track];
     // A run given up within the first seconds is not worth a place in the list.
     if (!track || (run.outcome !== Outcome.Finished && run.inputs.length < MIN_UNFINISHED_TICKS)) return;
     const date = Date.now();
     const replay: Replay = {
       physicsVersion: PHYSICS_VERSION,
-      packId: this.pack.id,
+      packId: this.runPack.id,
       level: this.level,
       track: this.track,
       league: this.game.league,
@@ -485,7 +510,7 @@ export class App {
       finalHash: run.finalHash,
       inputs: run.inputs,
       // Tracks from the player's own files exist nowhere else, so they travel with the replay.
-      trackData: this.pack.id.startsWith('file-') ? track.data : null,
+      trackData: this.runPack.id.startsWith('file-') ? track.data : null,
     };
     if (!verifyReplay(track.data, replay)) {
       console.warn('A run could not be reproduced and was not saved.');
@@ -495,7 +520,7 @@ export class App {
     this.lastRun = this.replayStore.add({
       bytes: encodeReplay(replay),
       packId: replay.packId,
-      packName: this.pack.name,
+      packName: this.runPack.name,
       level: replay.level,
       track: replay.track,
       league: replay.league,
@@ -506,6 +531,133 @@ export class App {
       wheelie: replay.wheelie,
       time: replay.time,
     });
+  }
+
+  // ---- the daily track ---------------------------------------------------------------------
+
+  /** Looks up today's track, fetching its pack if need be, and shows it. */
+  private async openDaily(): Promise<void> {
+    this.open(() => ({ title: S.daily, back: null, items: [{ kind: 'text', html: S.downloading }] }));
+    const day = dayOf(Date.now());
+    try {
+      if (this.daily?.day !== day) {
+        const response = await fetch(`${this.baseUrl}assets/mods/daily.json`);
+        if (!response.ok) throw new Error('No list of daily tracks');
+        const pick = pickDaily(parseCandidates(await response.json()), day);
+        const pack = pick ? await this.mods.obtain(pick.packId) : null;
+        if (!pick || !pack?.levels[pick.level]?.[pick.track]) throw new Error('No daily track');
+        this.daily = { day, pack, level: pick.level, track: pick.track, league: pick.league };
+      }
+    } catch {
+      this.alert(S.daily, S.dailyUnavailable, () => this.open(this.mainMenu));
+      return;
+    }
+    this.open(this.dailyScreen);
+  }
+
+  private readonly dailyScreen: ScreenBuilder = () => {
+    const daily = this.daily;
+    const back = () => this.open(this.mainMenu);
+    if (!daily) return { title: S.daily, back, items: [{ kind: 'action', label: S.back, run: back }] };
+    const best = dailyBest(daily.day);
+    const streak = dailyStreak(daily.day);
+    const dim = (label: string, value: string): MenuItem => ({
+      kind: 'text',
+      html: `<span class="menu-dim">${label}:</span> ${escapeHtml(value)}`,
+    });
+    return {
+      title: S.daily,
+      back,
+      items: [
+        { kind: 'text', html: escapeHtml(daily.pack.levels[daily.level]?.[daily.track]?.name ?? ''), big: true },
+        dim(S.date, dayLabel(daily.day)),
+        dim(S.league, LEAGUE_NAMES[daily.league] ?? ''),
+        dim(S.levels, daily.pack.author ? `${daily.pack.name} by ${daily.pack.author}` : daily.pack.name),
+        dim(S.dailyBest, best === null ? S.dailyNotYet : formatScoreTime(Math.floor(best / 10))),
+        dim(S.dailyStreak, S.dailyDays(streak)),
+        { kind: 'space', size: 10 },
+        { kind: 'action', label: `${S.start}>`, run: () => void this.playDaily() },
+        { kind: 'action', label: S.back, run: back },
+      ],
+    };
+  };
+
+  private async playDaily(): Promise<void> {
+    const daily = this.daily;
+    const track = daily?.pack.levels[daily.level]?.[daily.track];
+    if (!daily || !track || this.launching) return;
+    this.launching = true;
+    try {
+      // The ghost is the best run on this very track, which today's best necessarily is.
+      const ghost = this.settings.ghost
+        ? await this.bestRun(daily.pack.id, daily.level, daily.track, daily.league, track)
+        : null;
+      this.game.load(track, daily.league, false, ghost);
+    } catch {
+      this.alert(S.daily, S.damagedTrack, () => this.open(this.dailyScreen));
+      return;
+    } finally {
+      this.launching = false;
+    }
+    this.level = daily.level;
+    this.track = daily.track;
+    this.runPack = daily.pack;
+    this.ridingDaily = true;
+    this.playing = true;
+    this.game.paused = false;
+    this.game.hud = true;
+    this.game.options.dimmed = false;
+    this.menu.hide();
+    this.current = null;
+    this.updateKeypad();
+  }
+
+  private readonly dailyPauseMenu: ScreenBuilder = () => ({
+    title: S.ingame,
+    back: () => this.resume(),
+    items: [
+      { kind: 'action', label: S.continue, run: () => this.resume() },
+      { kind: 'action', label: S.restart, run: () => void this.playDaily() },
+      this.link(S.options, this.optionsMenu(this.dailyPauseMenu)),
+      { kind: 'action', label: S.daily, run: () => this.showFrontMenu(this.dailyScreen) },
+    ],
+  });
+
+  /** The daily track stands apart: no unlocks, no high score table, only the best time of the day. */
+  private dailyFinished(result: RunResult): void {
+    const daily = this.daily;
+    if (!daily) return;
+    const improved = recordDaily(daily.day, result.time);
+    const best = dailyBest(daily.day) ?? result.time;
+    const screen: ScreenBuilder = () => ({
+      title: S.finished,
+      back: null,
+      items: [
+        { kind: 'text', html: formatScoreTime(Math.floor(result.time / 10)), big: true },
+        { kind: 'text', html: improved ? S.dailyNewBest : `${S.dailyBest}: ${formatScoreTime(Math.floor(best / 10))}` },
+        { kind: 'text', html: `${S.dailyStreak}: ${S.dailyDays(dailyStreak(daily.day))}` },
+        { kind: 'space', size: 10 },
+        { kind: 'action', label: S.restart, run: () => void this.playDaily() },
+        {
+          kind: 'action',
+          label: S.watchReplay,
+          run: () =>
+            void this.lastRun.then((run) => {
+              if (run) void this.watch(run, screen);
+            }),
+        },
+        {
+          kind: 'action',
+          label: S.share,
+          run: () =>
+            void this.lastRun.then((run) => {
+              if (run) this.replays.share(run, screen);
+            }),
+        },
+        { kind: 'action', label: S.daily, run: () => this.showFrontMenu(this.dailyScreen) },
+      ],
+    });
+    this.showMenu(screen);
   }
 
   // ---- trying out a track from the editor --------------------------------------------------
@@ -711,6 +863,10 @@ export class App {
   // ---- finishing a run --------------------------------------------------------------------
 
   private finished(result: RunResult): void {
+    if (this.ridingDaily) {
+      this.dailyFinished(result);
+      return;
+    }
     if (this.testing) {
       this.stopTest(S.editorTestFinished(formatScoreTime(Math.floor(result.time / 10))));
       return;
@@ -840,6 +996,7 @@ export class App {
     back: null,
     items: [
       this.link(S.playMenu, this.playMenu),
+      { kind: 'action', label: S.daily, run: () => void this.openDaily() },
       { kind: 'action', label: S.mods, run: () => this.open(this.mods.menu) },
       { kind: 'action', label: S.myRuns, run: () => void this.replays.openList() },
       { kind: 'action', label: S.editor, run: () => void this.editorScreens.openList() },

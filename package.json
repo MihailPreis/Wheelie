@@ -18,7 +18,8 @@
     "golden:generate": "node tools/golden/generate.mjs",
     "reference:fetch": "node tools/fetch-reference.mjs",
     "mods:mirror": "node tools/mods/mirror.mjs",
-    "mods:build": "node tools/mods/build.mjs"
+    "mods:build": "node tools/mods/build.mjs",
+    "mods:daily": "node tools/mods/daily.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
