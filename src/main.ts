@@ -7,6 +7,7 @@ import { Game } from './game/game';
 import { Input } from './game/input';
 import { Library } from './mods/library';
 import { buildPack, ORIGINAL_PACK_ID, type Pack } from './mods/pack';
+import { PlayerControls } from './player/controls';
 import { GAME_FONT } from './render/hud';
 import { loadSprites } from './render/sprites';
 import { ReplayStore } from './replay/store';
@@ -119,6 +120,7 @@ async function main(): Promise<void> {
   const keypad = new Keypad(input);
   const menu = new MenuView((name) => `${base}assets/sprites/3x/${name}.png`);
   const replayStore = new ReplayStore();
+  const controls = new PlayerControls(game);
   const output = new AudioOutput();
   const music = new Music(output, `${base}assets/audio/go.ogg`);
   const sound = new Sound(output);
@@ -132,7 +134,7 @@ async function main(): Promise<void> {
   dots.alt = '';
   menuButton.append(dots);
   menuButton.hidden = true;
-  document.body.append(menu.element, keypad.element, menuButton);
+  document.body.append(menu.element, keypad.element, menuButton, controls.element);
 
   const layout = () => {
     root.style.setProperty('--dp', String(game.scale));
@@ -155,6 +157,7 @@ async function main(): Promise<void> {
     music,
     sound,
     menuButton,
+    controls,
     layout,
     () => {
       library.clear();
@@ -184,6 +187,8 @@ async function main(): Promise<void> {
     const file = event.dataTransfer?.files[0];
     if (file) app.installFile(file);
   });
+  canvas.addEventListener('click', () => app.sceneTap());
+  window.addEventListener('pointermove', () => controls.wake());
   window.addEventListener('blur', () => input.release());
   document.addEventListener('visibilitychange', () => {
     output.setHidden(document.hidden);

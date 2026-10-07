@@ -10,6 +10,8 @@ type ScreenBuilder = () => MenuScreen;
 export interface ReplaysHost {
   open(builder: ScreenBuilder): void;
   readonly parent: ScreenBuilder;
+  /** Plays a run, then returns to `back`. */
+  watch(replay: StoredReplay, back: ScreenBuilder): void;
 }
 
 /** Runs listed at once; the rest come with "Load more". */
@@ -76,7 +78,7 @@ export class ReplayScreens {
   };
 
   private replayScreen(replay: StoredReplay): ScreenBuilder {
-    return () => {
+    const self: ScreenBuilder = () => {
       const back = () => this.host.open(this.listScreen);
       return {
         title: S.myRuns,
@@ -92,6 +94,7 @@ export class ReplayScreens {
           field(S.rider, replay.player),
           field(S.date, when(replay.date)),
           { kind: 'space', size: 10 },
+          { kind: 'action', label: S.watch, run: () => this.host.watch(replay, self) },
           {
             kind: 'action',
             label: S.delete,
@@ -105,5 +108,6 @@ export class ReplayScreens {
         ],
       };
     };
+    return self;
   }
 }

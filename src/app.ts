@@ -1,7 +1,7 @@
 import type { Music } from './audio/music';
 import type { Sound } from './audio/sound';
 import { PHYSICS_VERSION } from './core/version';
-import { encodeReplay, hashTrack, Outcome, type Replay } from './formats/replay';
+import { decodeReplay, encodeReplay, hashTrack, Outcome, type Replay } from './formats/replay';
 import type { Game, RecordedRun, RunResult, Track } from './game/game';
 import { GamepadNavigator } from './game/gamepad-nav';
 import {
@@ -30,11 +30,12 @@ import {
 } from './game/progress';
 import { loadSettings, normalizeName, type Settings, saveSettings } from './game/settings';
 import type { Library } from './mods/library';
-import type { Pack } from './mods/pack';
+import { buildPack, ORIGINAL_PACK_ID, type Pack } from './mods/pack';
 import { ModsScreens, type ScreenBuilder } from './mods/screens';
+import type { PlayerControls } from './player/controls';
 import { ReplayScreens } from './replay/screens';
 import { verifyReplay } from './replay/simulate';
-import type { ReplayStore } from './replay/store';
+import type { ReplayStore, StoredReplay } from './replay/store';
 import { removeAll, writeJson } from './storage/store';
 import type { Keypad } from './ui/keypad';
 import type { MenuItem, MenuKey, MenuView } from './ui/menu/view';
@@ -95,11 +96,15 @@ export class App {
   private level = 0;
   private track = 0;
   private playing = false;
+  /** A replay is on screen. */
+  private watching = false;
+  /** The run that has just ended, once it has been saved. */
+  private lastRun: Promise<StoredReplay | null> = Promise.resolve(null);
 
   constructor(
     private pack: Pack,
-    original: Pack,
-    library: Library,
+    private readonly original: Pack,
+    private readonly library: Library,
     private readonly replayStore: ReplayStore,
     baseUrl: string,
     private readonly game: Game,
@@ -109,6 +114,7 @@ export class App {
     private readonly music: Music,
     private readonly sound: Sound,
     private readonly menuButton: HTMLElement,
+    private readonly controls: PlayerControls,
     private readonly onLayout: () => void,
     private readonly onReset: () => void,
   ) {
@@ -133,7 +139,15 @@ export class App {
       original,
     );
 
-    this.replays = new ReplayScreens({ open: (builder) => this.open(builder), parent: this.mainMenu }, replayStore);
+    this.replays = new ReplayScreens(
+      {
+        open: (builder) => this.open(builder),
+        parent: this.mainMenu,
+        watch: (replay, back) => void this.watch(replay, back),
+      },
+      replayStore,
+    );
+    controls.onClose = () => this.stopWatching();
 
     game.onFinish = (result) => this.finished(result);
     game.onRun = (run) => this.recordRun(run);
@@ -190,8 +204,8 @@ export class App {
   /** The keypad shows on touch devices: always while riding, and in the menus if the option says so. */
   private updateKeypad(): void {
     const touch = this.input.device === 'touch';
-    this.keypad.visible = touch && (this.playing || this.settings.keypadInMenu);
-    this.menuButton.hidden = !this.playing || this.menu.visible;
+    this.keypad.visible = touch && !this.watching && (this.playing || this.settings.keypadInMenu);
+    this.menuButton.hidden = !this.playing || this.menu.visible || this.watching;
     this.onLayout();
   }
 
@@ -215,6 +229,7 @@ export class App {
   /** Handles a key press. Returns true if the key was used. */
   keyDown(event: KeyboardEvent): boolean {
     this.music.unlock();
+    if (this.watching) return this.controls.key(event);
     if (this.menu.visible) {
       if (event.key.length === 1 && this.menu.typeLetter(event.key)) return true;
       const key = MENU_KEYS[event.code];
@@ -234,6 +249,10 @@ export class App {
 
   private readonly pollGamepad = (now: number): void => {
     for (const action of this.padNavigator.poll(now)) {
+      if (this.watching) {
+        this.controls.pad(action);
+        continue;
+      }
       if (action === 'pause') {
         if (this.menu.visible) this.menu.key('back');
         else this.pause();
@@ -247,7 +266,8 @@ export class App {
   /** The page went to the background: a run in progress is paused rather than left to crash. */
   hidden(): void {
     this.input.release();
-    if (this.playing && !this.menu.visible) this.pause();
+    if (this.watching) this.game.paused = true;
+    else if (this.playing && !this.menu.visible) this.pause();
   }
 
   private trackAt(level: number, track: number): Track | undefined {
@@ -360,9 +380,10 @@ export class App {
     };
     if (!verifyReplay(track.data, replay)) {
       console.warn('A run could not be reproduced and was not saved.');
+      this.lastRun = Promise.resolve(null);
       return;
     }
-    void this.replayStore.add({
+    this.lastRun = this.replayStore.add({
       bytes: encodeReplay(replay),
       packId: replay.packId,
       packName: this.pack.name,
@@ -376,6 +397,77 @@ export class App {
       wheelie: replay.wheelie,
       time: replay.time,
     });
+  }
+
+  // ---- watching a replay ------------------------------------------------------------------
+
+  /** The track a replay was made on, or the reason it cannot be shown. */
+  private async trackFor(replay: Replay): Promise<Track | string> {
+    if (replay.physicsVersion !== PHYSICS_VERSION) return S.replayOtherVersion;
+    if (replay.trackData) {
+      if (hashTrack(replay.trackData) !== replay.trackHash) return S.replayDamaged;
+      return { name: replay.trackName, data: replay.trackData };
+    }
+    let pack: Pack | null = null;
+    if (replay.packId === this.pack.id) pack = this.pack;
+    else if (replay.packId === ORIGINAL_PACK_ID) pack = this.original;
+    else {
+      const installed = await this.library.get(replay.packId);
+      try {
+        if (installed) pack = buildPack(installed.id, installed.name, installed.author, installed.bytes);
+      } catch {
+        // Treated as not installed.
+      }
+    }
+    const track = pack?.levels[replay.level]?.[replay.track];
+    if (!track) return S.replayNoPack;
+    return hashTrack(track.data) === replay.trackHash ? track : S.replayChangedTrack;
+  }
+
+  /** Plays a saved run; `back` is the screen to return to afterwards. */
+  private async watch(stored: StoredReplay, back: ScreenBuilder): Promise<void> {
+    const fail = (text: string) => this.alert(S.myRuns, text, () => this.open(back));
+    let replay: Replay;
+    try {
+      replay = decodeReplay(stored.bytes);
+    } catch {
+      fail(S.replayDamaged);
+      return;
+    }
+    const track = await this.trackFor(replay);
+    if (typeof track === 'string') {
+      fail(track);
+      return;
+    }
+    try {
+      this.game.watch(track, replay.league, { inputs: replay.inputs, finishTime: replay.time });
+    } catch {
+      fail(S.replayDamaged);
+      return;
+    }
+    this.watching = true;
+    this.afterWatching = back;
+    this.game.paused = false;
+    this.game.hud = true;
+    this.game.options.dimmed = false;
+    this.menu.hide();
+    this.current = null;
+    this.controls.show();
+    this.updateKeypad();
+  }
+
+  private afterWatching: ScreenBuilder | null = null;
+
+  private stopWatching(): void {
+    if (!this.watching) return;
+    this.watching = false;
+    this.controls.hide();
+    this.showFrontMenu(this.afterWatching ?? this.mainMenu);
+  }
+
+  /** A tap or click on the picture itself. */
+  sceneTap(): void {
+    if (this.watching) this.controls.tap();
   }
 
   // ---- finishing a run --------------------------------------------------------------------
@@ -466,9 +558,17 @@ export class App {
       label: `${S.restart}: ${this.trackName(level, track)}`,
       run: () => this.play(level, track),
     });
+    const screen: ScreenBuilder = () => ({ title: S.finished, back: null, items });
+    items.push({
+      kind: 'action',
+      label: S.watchReplay,
+      run: () =>
+        void this.lastRun.then((run) => {
+          if (run) void this.watch(run, screen);
+        }),
+    });
     items.push({ kind: 'action', label: S.playMenu, run: () => this.showFrontMenu(this.playMenu) });
 
-    const screen: ScreenBuilder = () => ({ title: S.finished, back: null, items });
     this.showMenu(screen);
     if (unlocked !== null) {
       this.alert(S.leagueUnlocked, S.leagueUnlockedText + (LEAGUE_NAMES[unlocked] ?? ''), () => this.open(screen));

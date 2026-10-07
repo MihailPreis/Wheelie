@@ -172,6 +172,36 @@ test('a run is recorded and listed under My runs', async ({ page }) => {
   await expect(items(page)).toHaveCount(2);
   await press(page, 'Enter');
   await expect(texts(page).nth(1)).toContainText('Result');
+
+  // Watch it: the replay plays, can be paused, sought and left.
+  const position = () =>
+    page.evaluate(() => (window as unknown as { wheelie: { game: { position: number } } }).wheelie.game.position);
   await press(page, 'Enter');
+  await expect(page.locator('.player')).toBeVisible();
+  await expect.poll(position).toBeGreaterThan(30);
+  await press(page, 'Space');
+  await expect(page.locator('.player-toggle')).toHaveText('Play');
+  const paused = await position();
+  await page.waitForTimeout(200);
+  expect(await position()).toBe(paused);
+  await press(page, '5');
+  const middle = await position();
+  expect(middle).toBeGreaterThan(100);
+  await press(page, ',');
+  expect(await position()).toBe(middle - 1);
+  await press(page, '0');
+  expect(await position()).toBe(0);
+  // Played to the end at four times the speed, it stops there.
+  await press(page, 'ArrowUp', 'ArrowUp', 'Space');
+  await expect(page.locator('.player-speed')).toHaveText('4x');
+  await expect(page.locator('.player-toggle')).toHaveText('Pause');
+  await expect(page.locator('.player-toggle')).toHaveText('Play', { timeout: 10_000 });
+  expect(await position()).toBeGreaterThan(middle);
+  await press(page, 'Escape');
+  await expect(page.locator('.player')).toBeHidden();
+  await expect(texts(page).nth(1)).toContainText('Result');
+
+  // Delete is the second action on the screen of a run.
+  await press(page, 'ArrowDown', 'Enter');
   await expect(texts(page).first()).toContainText('No runs yet');
 });

@@ -1,0 +1,73 @@
+/* The replay bar, built from what the game already has: its font, black on white, the green of the track. */
+.player {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--dp) * 4px) calc(var(--dp) * 10px);
+  padding: calc(var(--dp) * 8px) calc(var(--dp) * 12px);
+  padding-bottom: calc(var(--dp) * 8px + env(safe-area-inset-bottom, 0px));
+  background: rgb(255 255 255 / 85%);
+  color: #000;
+  font-size: calc(var(--dp) * 16px);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  transition: opacity 0.3s;
+}
+
+.player[hidden] {
+  display: none;
+}
+
+.player-idle {
+  opacity: 0;
+}
+
+.player-button {
+  flex: none;
+  min-width: calc(var(--dp) * 44px);
+  padding: calc(var(--dp) * 6px) calc(var(--dp) * 8px);
+  border: calc(var(--dp) * 1px) solid #000;
+  background: #fff;
+  color: #000;
+  font: inherit;
+  cursor: pointer;
+}
+
+.player-button:active {
+  color: #00a000;
+  border-color: #00a000;
+}
+
+.player-toggle {
+  min-width: calc(var(--dp) * 60px);
+}
+
+.player-timeline {
+  /* A row of its own above the buttons, so it is as long as the screen allows. */
+  flex: 1 0 100%;
+  order: -1;
+  height: calc(var(--dp) * 20px);
+  /* A thin bar, as the track progress at the top of the game, with a taller area to grab. */
+  background: linear-gradient(#c4c4c4, #c4c4c4) center / 100% calc(var(--dp) * 4px) no-repeat;
+  cursor: pointer;
+  position: relative;
+}
+
+.player-played {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: calc(var(--dp) * 4px);
+  transform: translateY(-50%);
+  background: #29aa27;
+}
+
+.player-clock {
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+}
