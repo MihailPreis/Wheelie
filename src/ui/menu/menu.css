@@ -47,6 +47,9 @@
 }
 
 .menu-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: pre;
 }
 
@@ -208,4 +211,8 @@
   height: 100%;
   width: 0;
   background: #29aa27;
+}
+
+.menu-dim {
+  color: #888;
 }

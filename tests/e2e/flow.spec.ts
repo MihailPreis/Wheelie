@@ -26,9 +26,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('main menu leads to every section and back', async ({ page }) => {
-  await expect(items(page)).toHaveText(['Play Menu', 'Options', 'Help', 'About']);
+  await expect(items(page)).toHaveText(['Play Menu', 'Mods', 'Options', 'Help', 'About']);
 
-  await press(page, 'ArrowDown', 'ArrowDown', 'Enter');
+  await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('Help');
   await press(page, 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('Keys');
@@ -42,7 +42,7 @@ test('main menu leads to every section and back', async ({ page }) => {
 });
 
 test('options are toggled and remembered', async ({ page }) => {
-  await press(page, 'ArrowDown', 'Enter');
+  await press(page, 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('Options');
   const perspective = page.locator('.menu-item', { hasText: 'Perspective' }).locator('.menu-value');
   await expect(perspective).toHaveText('On');
@@ -52,7 +52,7 @@ test('options are toggled and remembered', async ({ page }) => {
   await page.reload();
   await page.keyboard.press('Enter');
   await expect(title(page)).toHaveText('Main', { timeout: 10_000 });
-  await press(page, 'ArrowDown', 'Enter');
+  await press(page, 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(perspective).toHaveText('Off');
 });
 
@@ -107,4 +107,42 @@ test('a finished run records a score, unlocks the next track and offers it', asy
   await press(page, 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('High Scores');
   await expect(texts(page)).toContainText(['1. MIK 00:12.34']);
+});
+
+test('a level pack is installed from the catalogue, played and deleted', async ({ page }) => {
+  const activePack = () => page.evaluate(() => localStorage.getItem('wheelie.activePack'));
+
+  await press(page, 'ArrowDown', 'Enter');
+  await expect(title(page)).toHaveText('Mods');
+  await press(page, 'Enter');
+  await expect(items(page).first()).toContainText('Sort by', { timeout: 10_000 });
+  expect(await items(page).count()).toBeGreaterThan(50);
+
+  // The first pack of the list.
+  await press(page, 'ArrowDown', 'Enter');
+  await expect(items(page).first()).toContainText('Install (');
+  await press(page, 'Enter');
+  await expect(texts(page).first()).toHaveText('Levels successfully installed.', { timeout: 10_000 });
+  await press(page, 'Enter');
+  await expect(items(page).first()).toHaveText('Open installed');
+  await press(page, 'Enter');
+  await expect(items(page).first()).toHaveText('Play these levels');
+  await press(page, 'Enter');
+  await expect(title(page)).toHaveText('Play');
+  expect(await activePack()).toMatch(/^"gdtr-\d+"$/);
+
+  // The choice and the pack itself survive a reload.
+  await page.reload();
+  await page.keyboard.press('Enter');
+  await expect(title(page)).toHaveText('Main', { timeout: 10_000 });
+  expect(await activePack()).toMatch(/^"gdtr-\d+"$/);
+
+  await press(page, 'ArrowDown', 'Enter', 'ArrowDown', 'Enter');
+  await expect(title(page)).toHaveText('Installed mods');
+  await expect(items(page).nth(1)).toContainText('active');
+  await press(page, 'ArrowDown', 'Enter');
+  await expect(items(page).first()).toHaveText('Delete');
+  await press(page, 'Enter', 'ArrowDown', 'Enter');
+  await expect(title(page)).toHaveText('Play');
+  expect(await activePack()).toBe('"original"');
 });

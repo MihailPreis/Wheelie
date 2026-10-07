@@ -22,3 +22,6 @@ playwright-report/
 .idea/
 .vscode/
 *.log
+
+# Built from mods-src/ by tools/mods/build.mjs
+public/assets/mods/

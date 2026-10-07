@@ -7,8 +7,8 @@
   "type": "module",
   "packageManager": "pnpm@12.10.1",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "node tools/mods/build.mjs && vite",
+    "build": "node tools/mods/build.mjs && vite build",
     "preview": "vite preview",
     "check": "biome check . && tsc -p tsconfig.json && tsc -p tsconfig.core.json && tsc -p tsconfig.node.json",
     "format": "biome check --write .",
@@ -16,7 +16,9 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "golden:generate": "node tools/golden/generate.mjs",
-    "reference:fetch": "node tools/fetch-reference.mjs"
+    "reference:fetch": "node tools/fetch-reference.mjs",
+    "mods:mirror": "node tools/mods/mirror.mjs",
+    "mods:build": "node tools/mods/build.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",

@@ -38,3 +38,9 @@ or converting it to MP3 would add a gap at the loop point.
 outlines of Roboto Condensed Bold Italic (SIL Open Font License 1.1). The PNG files next to them
 (`preview.png` for link previews, `icon-512.png`, `apple-touch-icon.png`) are rendered from the SVG
 sources with `node tools/render-brand.mjs`.
+
+## Level packs
+
+`mods-src/` mirrors the level packs published on [gdtr.net](https://gdtr.net/levels/) (996 packs as of
+2026-10-08), fetched with `tools/mods/mirror.mjs`. The files are unchanged; names, authors and dates
+come from the site's catalogue. The packs are the work of their authors, who are named in the game.

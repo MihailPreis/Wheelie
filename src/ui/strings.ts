@@ -5,9 +5,36 @@ import { APP_NAME, APP_TAGLINE } from '../config';
  * (`res/values/strings.xml` of the Android port) wherever the screen exists there.
  */
 export const STRINGS = {
-  splashCredit: 'Based on Gravity Defied\n© 2004 Codebrew Software\nAndroid port by evgenyzinoviev',
+  splashCredit: 'Based on Gravity Defied\n© 2004 Codebrew Software\nAndroid port by G. Klyushnikov and E. Zinoviev',
 
   main: 'Main',
+  mods: 'Mods',
+  downloadMods: 'Download mods',
+  installedMods: 'Installed mods',
+  installMrg: 'Install levels.mrg',
+  downloading: 'Downloading..',
+  installing: 'Installing..',
+  downloadError: 'Cannot download levels list.',
+  downloadInterrupted: 'Downloading was interrupted',
+  sortBy: 'Sort by',
+  sortOrders: ['Popularity', 'Most recent', 'Oldest', 'Tracks count'],
+  loadMore: (left: number) => `Load more (${left})`,
+  author: 'Author',
+  unknownAuthor: 'unknown',
+  added: 'Added',
+  tracks: 'Tracks',
+  installed: 'Installed',
+  active: 'active',
+  activeText: 'You are playing these levels.',
+  installKb: (size: number) => `Install (${size} Kb)`,
+  openInstalled: 'Open installed',
+  playThese: 'Play these levels',
+  successfullyInstalled: 'Levels successfully installed.',
+  damagedPack: 'Looks like these levels are damaged.',
+  delete: 'Delete',
+  deleteLevels: 'Delete levels',
+  deleteLevelsConfirmation: 'Are you sure you want to delete these levels? This action cannot be undone.',
+  originalLevels: 'Original levels',
   playMenu: 'Play Menu',
   play: 'Play',
   options: 'Options',
@@ -106,6 +133,7 @@ The keysets apply to the digit keys and to the on-screen keypad, whose buttons s
 This is a fan project. It is not affiliated with, endorsed by or connected to Codebrew Software. All rights to the original Gravity Defied, its name, logo, brand and original assets belong to Codebrew Software.<br><br>
 <b>Gravity Defied - Trial Racing</b> by Codebrew Software<br>codebrew.se &copy; 2004<br><br>
 <b>Gravity Defied Classic</b> for Android by Gregory Klyushnikov and Evgeny Zinoviev<br>gdtr.net &copy; 2014<br><br>
+<b>Level packs</b> in the Mods menu were made by the gdtr.net community; each one shows its author.<br><br>
 <b>Music</b>: "Go" by Abstraction, from the album Three Red Hearts (public domain)<br><br>
 Source code, under the GNU GPL v2:<br>github.com/MihailPreis/Wheelie`,
 

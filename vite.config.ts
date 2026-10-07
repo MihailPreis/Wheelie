@@ -20,8 +20,11 @@ function siteUrl(): Plugin {
   };
 }
 
-/** Sprite sets the game does not load; there is no point in downloading them for offline play. */
-const NOT_CACHED = /^assets\/sprites\/(1x|1\.5x|2x)\/|^sw\.js$/;
+/**
+ * Not downloaded up front: sprite sets the game does not load, and the level pack catalogue, which is
+ * fetched (and then kept) only when the player opens it.
+ */
+const NOT_CACHED = /^assets\/sprites\/(1x|1\.5x|2x)\/|^assets\/mods\/|^sw\.js$/;
 
 /** Writes `sw.js` with the list of built files, so the game starts and plays without a network. */
 function serviceWorker(): Plugin {

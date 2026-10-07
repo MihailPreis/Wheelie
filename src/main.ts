@@ -1,13 +1,15 @@
-import { App, type Pack } from './app';
+import { ACTIVE_PACK_KEY, App } from './app';
 import { Music } from './audio/music';
 import { AudioOutput } from './audio/output';
 import { Sound } from './audio/sound';
 import { APP_NAME, APP_TAGLINE } from './config';
-import { parsePackHeader, parseTrack } from './formats/mrg';
 import { Game } from './game/game';
 import { Input } from './game/input';
+import { Library } from './mods/library';
+import { buildPack, ORIGINAL_PACK_ID, type Pack } from './mods/pack';
 import { GAME_FONT } from './render/hud';
 import { loadSprites } from './render/sprites';
+import { readJson } from './storage/store';
 import './style.css';
 import { Keypad } from './ui/keypad';
 import { MenuView } from './ui/menu/view';
@@ -73,6 +75,19 @@ async function splash<T>(base: string, work: Promise<T>): Promise<T> {
   }
 }
 
+/** The pack the player last switched to, if it is still installed and readable. */
+async function activePack(library: Library, original: Pack): Promise<Pack> {
+  const id = readJson<unknown>(ACTIVE_PACK_KEY);
+  if (typeof id !== 'string' || id === ORIGINAL_PACK_ID) return original;
+  try {
+    const installed = await library.get(id);
+    if (installed) return buildPack(installed.id, installed.name, installed.author, installed.bytes);
+  } catch {
+    // Fall through to the tracks the game comes with.
+  }
+  return original;
+}
+
 async function loadEverything(base: string) {
   const [sprites, packResponse] = await Promise.all([
     loadSprites(base),
@@ -81,13 +96,9 @@ async function loadEverything(base: string) {
   ]);
   if (!packResponse.ok) throw new Error('Failed to load the level pack');
   const bytes = new Uint8Array(await packResponse.arrayBuffer());
-  const pack: Pack = {
-    id: 'original',
-    levels: parsePackHeader(bytes).levels.map((level) =>
-      level.map((entry) => ({ name: entry.name, data: parseTrack(bytes, entry.offset) })),
-    ),
-  };
-  return { sprites, pack };
+  const original = buildPack(ORIGINAL_PACK_ID, STRINGS.originalLevels, 'Codebrew Software', bytes);
+  const library = new Library();
+  return { sprites, original, library, pack: await activePack(library, original) };
 }
 
 async function main(): Promise<void> {
@@ -100,7 +111,7 @@ async function main(): Promise<void> {
   const dp = () => Math.max(1, Math.min(window.innerWidth, window.innerHeight) / 360);
   root.style.setProperty('--dp', String(dp()));
 
-  const { sprites, pack } = await splash(base, loadEverything(base));
+  const { sprites, pack, original, library } = await splash(base, loadEverything(base));
 
   const input = new Input();
   const game = new Game(canvas, sprites, input);
@@ -129,7 +140,9 @@ async function main(): Promise<void> {
   };
   new ResizeObserver(layout).observe(canvas);
 
-  const app = new App(pack, game, input, keypad, menu, music, sound, menuButton, layout);
+  const app = new App(pack, original, library, base, game, input, keypad, menu, music, sound, menuButton, layout, () =>
+    library.clear(),
+  );
   if (matchMedia('(pointer: coarse)').matches) input.touch(-1, null);
   input.touchEnd(-1);
 
@@ -145,6 +158,13 @@ async function main(): Promise<void> {
       input.touch(event.pointerId, null);
       input.touchEnd(event.pointerId);
     }
+  });
+  // A level pack file can be dropped anywhere on the page.
+  window.addEventListener('dragover', (event) => event.preventDefault());
+  window.addEventListener('drop', (event) => {
+    event.preventDefault();
+    const file = event.dataTransfer?.files[0];
+    if (file) app.installFile(file);
   });
   window.addEventListener('blur', () => input.release());
   document.addEventListener('visibilitychange', () => {

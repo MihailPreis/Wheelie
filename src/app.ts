@@ -27,19 +27,16 @@ import {
   unlockEverything,
 } from './game/progress';
 import { loadSettings, normalizeName, type Settings, saveSettings } from './game/settings';
-import { removeAll } from './storage/store';
+import type { Library } from './mods/library';
+import type { Pack } from './mods/pack';
+import { ModsScreens, type ScreenBuilder } from './mods/screens';
+import { removeAll, writeJson } from './storage/store';
 import type { Keypad } from './ui/keypad';
-import type { MenuItem, MenuKey, MenuScreen, MenuView } from './ui/menu/view';
+import type { MenuItem, MenuKey, MenuView } from './ui/menu/view';
 import { STRINGS as S } from './ui/strings';
 
-/** A level pack ready to play. */
-export interface Pack {
-  id: string;
-  /** Tracks of the easy, medium and hard levels. */
-  levels: Track[][];
-}
-
-type ScreenBuilder = () => MenuScreen;
+/** Where the identifier of the pack being played is remembered. */
+export const ACTIVE_PACK_KEY = 'activePack';
 
 const ON_OFF = [S.on, S.off] as const;
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
@@ -79,8 +76,9 @@ const PAUSE_KEYS = new Set(['Escape', 'KeyP']);
  */
 export class App {
   private readonly settings: Settings = loadSettings();
-  private readonly progress: Progress;
-  private readonly trackCounts: number[];
+  private progress: Progress;
+  private trackCounts: number[];
+  private readonly mods: ModsScreens;
   private readonly padNavigator = new GamepadNavigator();
 
   private current: ScreenBuilder | null = null;
@@ -90,7 +88,10 @@ export class App {
   private playing = false;
 
   constructor(
-    private readonly pack: Pack,
+    private pack: Pack,
+    original: Pack,
+    library: Library,
+    baseUrl: string,
     private readonly game: Game,
     private readonly input: Input,
     private readonly keypad: Keypad,
@@ -99,11 +100,28 @@ export class App {
     private readonly sound: Sound,
     private readonly menuButton: HTMLElement,
     private readonly onLayout: () => void,
+    private readonly onReset: () => void,
   ) {
     this.trackCounts = pack.levels.map((level) => level.length);
     this.progress = loadProgress(pack.id, this.trackCounts);
     if (isCheatName(this.settings.name)) unlockEverything(this.progress, this.trackCounts);
     this.applySettings();
+    this.mods = new ModsScreens(
+      {
+        open: (builder) => this.open(builder),
+        alert: (title, text, then) => this.alert(title, text, then),
+        parent: this.mainMenu,
+        activePackId: () => this.pack.id,
+        usePack: (next) => this.usePack(next),
+        forgetPack: (id) => {
+          clearScores(id);
+          removeAll(`progress.${id}`);
+        },
+      },
+      library,
+      baseUrl,
+      original,
+    );
 
     game.onFinish = (result) => this.finished(result);
     input.onDeviceChange = () => this.updateKeypad();
@@ -134,6 +152,22 @@ export class App {
   private saveSettings(): void {
     saveSettings(this.settings);
     this.applySettings();
+  }
+
+  /** Switches to another level pack, with its own progress and scores, and shows its tracks. */
+  private usePack(pack: Pack): void {
+    this.pack = pack;
+    this.trackCounts = pack.levels.map((level) => level.length);
+    this.progress = loadProgress(pack.id, this.trackCounts);
+    if (isCheatName(this.settings.name)) unlockEverything(this.progress, this.trackCounts);
+    writeJson(ACTIVE_PACK_KEY, pack.id);
+    this.showFrontMenu(this.playMenu);
+  }
+
+  /** A `.mrg` file was dropped on the page. */
+  installFile(file: File): void {
+    if (this.playing) return;
+    void this.mods.installFile(file);
   }
 
   private saveProgress(): void {
@@ -254,6 +288,10 @@ export class App {
     try {
       this.game.load(data, this.progress.selectedLeague);
     } catch {
+      // Some community packs contain a track that cannot be loaded. It counts as passed, or the
+      // tracks behind it could never be unlocked.
+      completeTrack(this.progress, level, track, this.trackCounts);
+      this.saveProgress();
       this.alert(S.playMenu, S.damagedTrack, () => this.open(this.playMenu));
       return;
     }
@@ -403,6 +441,7 @@ export class App {
     back: null,
     items: [
       this.link(S.playMenu, this.playMenu),
+      { kind: 'action', label: S.mods, run: () => this.open(this.mods.menu) },
       this.link(S.options, this.optionsMenu(this.mainMenu)),
       this.link(S.help, this.helpMenu(this.mainMenu)),
       this.link(S.about, this.textScreen(S.about, S.aboutText, this.mainMenu)),
@@ -617,6 +656,7 @@ export class App {
             run: () => {
               // Everything the game has stored, then a fresh start.
               removeAll('');
+              this.onReset();
               location.reload();
             },
           },
