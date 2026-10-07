@@ -1,6 +1,6 @@
 {
   "name": "wheelie",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Wheelie! — an unofficial fan-made web port of Gravity Defied",
   "license": "GPL-2.0-only",
@@ -19,7 +19,8 @@
     "reference:fetch": "node tools/fetch-reference.mjs",
     "mods:mirror": "node tools/mods/mirror.mjs",
     "mods:build": "node tools/mods/build.mjs",
-    "mods:daily": "node tools/mods/daily.mjs"
+    "mods:daily": "node tools/mods/daily.mjs",
+    "package:itch": "node tools/package-itch.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",

@@ -25,3 +25,6 @@ playwright-report/
 
 # Built from mods-src/ by tools/mods/build.mjs
 public/assets/mods/
+
+# Archives for itch.io (pnpm package:itch)
+itch/

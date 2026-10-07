@@ -2,7 +2,7 @@
 
 **An unofficial fan-made web port of Gravity Defied** — the classic 2004 trial racing game for J2ME phones, playable in the browser.
 
-> **Status: early development.** The original game is playable at https://mihailpreis.github.io/Wheelie/ — all 30 tracks, menus, unlocks, high scores and options, with a keyboard, a gamepad or a touch screen, plus close to a thousand community level packs. It installs as an app and works offline. Every run is recorded and can be watched again, saved as a file or sent as a link. A run can be exported as an image card or an animated GIF, and tracks can be drawn in a built-in editor and saved as a `levels.mrg` pack. The list below describes what is being built, not what exists today.
+> **Status: early development.** The original game is playable at https://mihailpreis.github.io/Wheelie/ — all 30 tracks, menus, unlocks, high scores and options, with a keyboard, a gamepad or a touch screen, plus close to a thousand community level packs. It installs as an app and works offline. Every run is recorded and can be watched again, saved as a file or sent as a link. A run can be exported as an image card or an animated GIF, and tracks can be drawn in a built-in editor and saved as a `levels.mrg` pack. There is a daily track, the same for everyone, and the fastest run on a track comes back as a ghost to race. The list below describes what is being built, not what exists today.
 
 ## What it is
 
@@ -48,13 +48,16 @@ pnpm check        # lint and type-check
 pnpm test         # unit tests, including the physics comparison against the original
 pnpm test:e2e     # browser tests: smoke test and cross-engine determinism
 pnpm build        # production build in dist/
+pnpm package:itch # the same build zipped for itch.io; needs VITE_SHARE_BASE_URL
 ```
 
 ### Level packs
 
 `mods-src/` is a mirror of the level pack catalogue of gdtr.net: `catalog.json` and one `.mrg` file per
 pack. `pnpm dev` and `pnpm build` pack it into `public/assets/mods/` — a compact catalogue and a few
-chunk files, which the game fetches only when the player opens the Mods menu. `pnpm mods:mirror`
+chunk files, which the game fetches only when the player opens the Mods menu. `mods-src/daily.json` lists the
+tracks the daily track is drawn from — those the game's demo rider can finish — and is regenerated
+with `pnpm mods:daily`. `pnpm mods:mirror`
 refreshes the mirror; it is run by hand and the result is committed.
 
 ### Physics fidelity
