@@ -22,6 +22,13 @@ test('the track is drawn and the bike moves under throttle', async ({ page }) =>
   await page.goto('/');
   const canvas = page.locator('#game');
 
+  // Skip the opening screens, then Main → Play Menu → Start.
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.menu-title')).toHaveText('Main', { timeout: 10_000 });
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.menu')).toBeHidden();
+
   // Counts pixels of the track's near edge, which is pure green.
   const greenPixels = () =>
     canvas.evaluate((el: HTMLCanvasElement) => {

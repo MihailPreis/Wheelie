@@ -17,6 +17,7 @@ export default defineConfig({
       testMatch: 'smoke.spec.ts',
       use: { ...devices['Desktop Chrome'], baseURL: `http://localhost:${previewPort}` },
     },
+    { name: 'flow', testMatch: 'flow.spec.ts', use: { ...devices['Desktop Chrome'], ...dev } },
     { name: 'determinism-chromium', testMatch: 'determinism.spec.ts', use: { ...devices['Desktop Chrome'], ...dev } },
     { name: 'determinism-firefox', testMatch: 'determinism.spec.ts', use: { ...devices['Desktop Firefox'], ...dev } },
     { name: 'determinism-webkit', testMatch: 'determinism.spec.ts', use: { ...devices['Desktop Safari'], ...dev } },

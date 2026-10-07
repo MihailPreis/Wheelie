@@ -1,112 +1,165 @@
+import { App, type Pack } from './app';
 import { Music } from './audio/music';
+import { APP_NAME, APP_TAGLINE } from './config';
 import { parsePackHeader, parseTrack } from './formats/mrg';
-import { Game, type Track } from './game/game';
+import { Game } from './game/game';
 import { Input } from './game/input';
 import { GAME_FONT } from './render/hud';
 import { loadSprites } from './render/sprites';
 import './style.css';
 import { Keypad } from './ui/keypad';
+import { MenuView } from './ui/menu/view';
 
-// Temporary shell until the menus exist: plays the original pack straight away.
-//   ?level=0..2 &track=0.. &league=0..3   choose what to ride
-//   R restart, [ and ] previous and next track, L next league, M music on and off
+/** How long each of the two opening screens stays up, in milliseconds. */
+const SPLASH_MILLISECONDS = 1200;
 
-async function main(): Promise<void> {
-  const canvas = document.querySelector<HTMLCanvasElement>('#game');
-  if (!canvas) throw new Error('Game canvas is missing');
-  const base = import.meta.env.BASE_URL;
+function element<K extends keyof HTMLElementTagNameMap>(tag: K, className: string): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  node.className = className;
+  return node;
+}
 
+/**
+ * The opening screens of the original — the Codebrew logo, then the game's own — over a progress
+ * bar. They stay up while `work` runs and can be skipped once it is done.
+ */
+async function splash<T>(base: string, work: Promise<T>): Promise<T> {
+  const root = element('div', 'splash');
+  const progress = element('div', 'splash-progress');
+  const bar = element('div', 'splash-progress-bar');
+  progress.append(bar);
+  const content = element('div', '');
+  root.append(progress, content);
+  document.body.append(root);
+
+  let skipped = false;
+  const skip = () => {
+    skipped = true;
+  };
+  window.addEventListener('keydown', skip);
+  window.addEventListener('pointerdown', skip);
+  const hold = async (from: number, to: number) => {
+    const start = performance.now();
+    while (!skipped && performance.now() - start < SPLASH_MILLISECONDS) {
+      const done = (performance.now() - start) / SPLASH_MILLISECONDS;
+      bar.style.width = `${(from + (to - from) * done) * 100}%`;
+      await new Promise(requestAnimationFrame);
+    }
+  };
+
+  try {
+    const logo = element('img', 'splash-logo');
+    logo.src = `${base}assets/sprites/2x/codebrew.png`;
+    logo.alt = 'Codebrew Software';
+    content.append(logo);
+    await hold(0, 0.5);
+
+    const title = element('div', 'splash-title');
+    title.textContent = APP_NAME;
+    const tagline = element('div', 'splash-tagline');
+    tagline.textContent = APP_TAGLINE;
+    content.replaceChildren(title, tagline);
+    const result = await work;
+    skipped = false;
+    await hold(0.5, 1);
+    return result;
+  } finally {
+    window.removeEventListener('keydown', skip);
+    window.removeEventListener('pointerdown', skip);
+    root.remove();
+  }
+}
+
+async function loadEverything(base: string) {
   const [sprites, packResponse] = await Promise.all([
     loadSprites(base),
     fetch(`${base}assets/levels/levels.mrg`),
     document.fonts.load(`18px ${GAME_FONT}`),
   ]);
   if (!packResponse.ok) throw new Error('Failed to load the level pack');
-  const pack = new Uint8Array(await packResponse.arrayBuffer());
-  const tracks: Track[][] = parsePackHeader(pack).levels.map((level) =>
-    level.map((entry) => ({ name: entry.name, data: parseTrack(pack, entry.offset) })),
-  );
-
-  const params = new URLSearchParams(location.search);
-  const param = (name: string, limit: number) => {
-    const value = Number.parseInt(params.get(name) ?? '0', 10);
-    return Number.isFinite(value) ? Math.max(0, Math.min(limit - 1, value)) : 0;
+  const bytes = new Uint8Array(await packResponse.arrayBuffer());
+  const pack: Pack = {
+    id: 'original',
+    levels: parsePackHeader(bytes).levels.map((level) =>
+      level.map((entry) => ({ name: entry.name, data: parseTrack(bytes, entry.offset) })),
+    ),
   };
-  let level = param('level', tracks.length);
-  let index = param('track', tracks[level]?.length ?? 1);
-  let league = param('league', 4);
+  return { sprites, pack };
+}
+
+async function main(): Promise<void> {
+  const canvas = document.querySelector<HTMLCanvasElement>('#game');
+  if (!canvas) throw new Error('Game canvas is missing');
+  const base = import.meta.env.BASE_URL;
+  const root = document.documentElement;
+
+  // Sizes everywhere are in dp; this is the same scale the game picks for the scene.
+  const dp = () => Math.max(1, Math.min(window.innerWidth, window.innerHeight) / 360);
+  root.style.setProperty('--dp', String(dp()));
+
+  const { sprites, pack } = await splash(base, loadEverything(base));
 
   const input = new Input();
   const game = new Game(canvas, sprites, input);
   const keypad = new Keypad(input);
-  document.body.append(keypad.element);
-
+  const menu = new MenuView((name) => `${base}assets/sprites/3x/${name}.png`);
   const music = new Music(`${base}assets/audio/go.ogg`);
 
+  const menuButton = element('button', 'menu-button');
+  menuButton.type = 'button';
+  menuButton.setAttribute('aria-label', 'Menu');
+  const dots = element('img', 'menu-button-icon');
+  dots.src = `${base}assets/sprites/3x/ic_menu_up.png`;
+  dots.alt = '';
+  menuButton.append(dots);
+  menuButton.hidden = true;
+  document.body.append(menu.element, keypad.element, menuButton);
+
   const layout = () => {
-    document.documentElement.style.setProperty('--dp', String(game.scale));
-    game.keypadHeight = keypad.height;
-  };
-  const showKeypad = (visible: boolean) => {
-    keypad.visible = visible;
-    layout();
+    root.style.setProperty('--dp', String(game.scale));
+    const keypadHeight = keypad.height;
+    root.style.setProperty('--keypad-height', `${keypadHeight}px`);
+    game.keypadHeight = keypadHeight;
   };
   new ResizeObserver(layout).observe(canvas);
-  layout();
-  input.onDeviceChange = (device) => showKeypad(device === 'touch');
-  if (matchMedia('(pointer: coarse)').matches) showKeypad(true);
 
-  const load = () => {
-    const track = tracks[level]?.[index];
-    if (track) game.load(track, league);
-  };
-  const step = (delta: number) => {
-    const flat = tracks.flatMap((list, l) => list.map((_, t) => [l, t] as const));
-    const at = flat.findIndex(([l, t]) => l === level && t === index);
-    const next = flat[(at + delta + flat.length) % flat.length];
-    if (!next) return;
-    [level, index] = next;
-    load();
-  };
+  const app = new App(pack, game, input, keypad, menu, music, menuButton, layout);
+  if (matchMedia('(pointer: coarse)').matches) input.touch(-1, null);
+  input.touchEnd(-1);
 
   window.addEventListener('keydown', (event) => {
-    if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
-    music.unlock();
-    if (input.keyDown(event.code)) {
-      event.preventDefault();
-      return;
-    }
-    if (event.code === 'KeyR') game.restart();
-    else if (event.code === 'BracketLeft') step(-1);
-    else if (event.code === 'BracketRight') step(1);
-    else if (event.code === 'KeyM') music.enabled = !music.enabled;
-    else if (event.code === 'KeyL') {
-      league = (league + 1) % 4;
-      load();
-    }
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (app.keyDown(event)) event.preventDefault();
   });
   window.addEventListener('keyup', (event) => input.keyUp(event.code));
   window.addEventListener('pointerdown', (event) => {
     music.unlock();
-    if (event.pointerType === 'touch' && !keypad.visible) input.touch(event.pointerId, null);
+    // A finger anywhere switches to touch controls.
+    if (event.pointerType === 'touch' && input.device !== 'touch') {
+      input.touch(event.pointerId, null);
+      input.touchEnd(event.pointerId);
+    }
   });
   window.addEventListener('blur', () => input.release());
   document.addEventListener('visibilitychange', () => {
     music.setHidden(document.hidden);
     if (document.hidden) {
-      input.release();
+      app.hidden();
       game.stop();
     } else {
       game.start();
     }
   });
 
-  game.onFinish = () => step(1);
-  load();
+  // A handle for the browser tests, which cannot ride a track to the finish by themselves.
+  if (import.meta.env.DEV) Object.assign(window, { wheelie: { game } });
+
+  layout();
+  app.start();
   game.start();
 }
 
 main().catch((error) => {
   console.error(error);
-  document.body.textContent = 'Wheelie! failed to start. See the console for details.';
+  document.body.textContent = `${APP_NAME} failed to start. See the console for details.`;
 });

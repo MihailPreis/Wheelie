@@ -2,9 +2,7 @@
 
 **An unofficial fan-made web port of Gravity Defied** — the classic 2004 trial racing game for J2ME phones, playable in the browser.
 
-> **Status: early development.** You can already ride the 30 original tracks at https://mihailpreis.github.io/Wheelie/ with a keyboard, a gamepad or a touch screen, but there are no menus, progress or replays yet. The list below describes what is being built, not what exists today.
-
-Until the menus are in, the controls are: arrow keys or WASD to ride, `R` to restart, `[` and `]` to change track, `L` to change league, `M` to turn the music on or off.
+> **Status: early development.** The original game is playable at https://mihailpreis.github.io/Wheelie/ — all 30 tracks, menus, unlocks, high scores and options, with a keyboard, a gamepad or a touch screen. Mods, replays and the editor are not there yet. The list below describes what is being built, not what exists today.
 
 ## What it is
 

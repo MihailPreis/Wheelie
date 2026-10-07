@@ -10,6 +10,8 @@ export class Keypad {
   private readonly buttons: HTMLDivElement[] = [];
   private readonly grid: HTMLDivElement;
   vibrate = true;
+  /** Called with the digit (1–9) each time a button is pressed. */
+  onPress: ((digit: number) => void) | null = null;
 
   constructor(private readonly input: Input) {
     this.element = document.createElement('div');
@@ -27,7 +29,9 @@ export class Keypad {
 
     this.element.addEventListener('pointerdown', (event) => {
       this.element.setPointerCapture(event.pointerId);
-      this.input.touch(event.pointerId, this.digitAt(event));
+      const digit = this.digitAt(event);
+      this.input.touch(event.pointerId, digit);
+      this.onPress?.(digit);
       // Browsers reject vibration before the first completed tap.
       if (this.vibrate && navigator.userActivation?.hasBeenActive) navigator.vibrate?.(10);
       this.refresh();

@@ -1,0 +1,208 @@
+/* Sizes follow the Android port and are in dp; --dp is the size of one dp in CSS pixels. */
+.menu {
+  position: fixed;
+  inset: 0;
+  bottom: var(--keypad-height, 0px);
+  display: flex;
+  flex-direction: column;
+  background: rgb(255 255 255 / 50%);
+  color: #000;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.menu[hidden] {
+  display: none;
+}
+
+.menu-title {
+  padding: calc(var(--dp) * 25px) calc(var(--dp) * 30px) calc(var(--dp) * 13px);
+  font-size: calc(var(--dp) * 30px);
+  line-height: 1.1;
+}
+
+.menu-items {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 calc(var(--dp) * 30px) calc(var(--dp) * 15px);
+  scrollbar-width: none;
+}
+
+.menu-items::-webkit-scrollbar {
+  display: none;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  padding: calc(var(--dp) * 5px) 0;
+  font-size: calc(var(--dp) * 20px);
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.menu-item:active {
+  color: #00a000;
+}
+
+.menu-label {
+  white-space: pre;
+}
+
+/* The slot is always there so the text does not shift; the helmet shows on the highlighted row. */
+.menu-helmet {
+  flex: none;
+  width: calc(var(--dp) * 17.6px);
+  height: calc(var(--dp) * 8px);
+}
+
+.menu-helmet-image {
+  display: none;
+  width: calc(var(--dp) * 8px);
+  height: calc(var(--dp) * 8px);
+  /* A step of ten degrees every 50 ms, as in the original. */
+  animation: menu-helmet-spin 1.8s steps(36) infinite;
+}
+
+.menu-item.selected .menu-helmet-image {
+  display: block;
+}
+
+@keyframes menu-helmet-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.menu-lock {
+  width: calc(var(--dp) * 7px);
+  height: calc(var(--dp) * 8px);
+  margin-right: calc(var(--dp) * 5px);
+}
+
+.menu-lock-after {
+  margin-left: calc(var(--dp) * 8px);
+}
+
+.menu-text {
+  display: flex;
+  align-items: center;
+  padding: calc(var(--dp) * 3px) 0;
+  font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: calc(var(--dp) * 15px);
+  line-height: 1.5;
+  max-width: calc(var(--dp) * 520px);
+}
+
+.menu-text-big {
+  font-family: inherit;
+  font-size: calc(var(--dp) * 20px);
+  line-height: 1.2;
+}
+
+.menu-medal {
+  width: calc(var(--dp) * 6px);
+  height: calc(var(--dp) * 10px);
+  margin-right: calc(var(--dp) * 8px);
+}
+
+.menu-name {
+  display: flex;
+  gap: calc(var(--dp) * 14px);
+  padding: calc(var(--dp) * 10px) calc(var(--dp) * 17.6px) calc(var(--dp) * 14px);
+}
+
+.menu-name-letter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--dp) * 6px);
+  min-width: calc(var(--dp) * 24px);
+  font-size: calc(var(--dp) * 30px);
+  cursor: pointer;
+}
+
+.menu-name-char {
+  min-width: 1ch;
+  text-align: center;
+  border-bottom: calc(var(--dp) * 2px) solid transparent;
+}
+
+.menu-name-letter.selected .menu-name-char {
+  border-bottom-color: #000;
+}
+
+.menu-name-arrow {
+  width: calc(var(--dp) * 8px);
+  height: calc(var(--dp) * 4px);
+  padding: calc(var(--dp) * 6px) calc(var(--dp) * 8px);
+  opacity: 0.25;
+}
+
+.menu-name-letter.selected .menu-name-arrow {
+  opacity: 1;
+}
+
+/* The button that opens the in-game menu. */
+.menu-button {
+  position: fixed;
+  top: calc(var(--dp) * 6px);
+  right: calc(var(--dp) * 4px);
+  padding: calc(var(--dp) * 8px) calc(var(--dp) * 12px);
+  border: 0;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.menu-button[hidden] {
+  display: none;
+}
+
+.menu-button-icon {
+  display: block;
+  width: calc(var(--dp) * 6px);
+  height: calc(var(--dp) * 22px);
+}
+
+.splash {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  text-align: center;
+}
+
+.splash-logo {
+  width: calc(var(--dp) * 120px);
+}
+
+.splash-title {
+  font-size: calc(var(--dp) * 54px);
+  line-height: 1;
+}
+
+.splash-tagline {
+  margin-top: calc(var(--dp) * 8px);
+  font-size: calc(var(--dp) * 14px);
+  color: #666;
+}
+
+.splash-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(var(--dp) * 3px);
+  background: #c4c4c4;
+}
+
+.splash-progress-bar {
+  height: 100%;
+  width: 0;
+  background: #29aa27;
+}

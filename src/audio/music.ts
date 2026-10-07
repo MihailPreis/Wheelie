@@ -5,30 +5,13 @@
  * {@link Music.unlock} is called from an input event.
  */
 
-const STORAGE_KEY = 'wheelie.music';
 const VOLUME = 0.35;
-
-function readPreference(): boolean {
-  try {
-    return localStorage.getItem(STORAGE_KEY) !== 'off';
-  } catch {
-    return true;
-  }
-}
-
-function writePreference(enabled: boolean): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, enabled ? 'on' : 'off');
-  } catch {
-    // Storage can be unavailable (private mode, embedded frames); the choice then lasts for the session.
-  }
-}
 
 export class Music {
   private context: AudioContext | null = null;
   private gain: GainNode | null = null;
   private loading = false;
-  private wanted: boolean = readPreference();
+  private wanted = true;
   /** The page is hidden, so nothing should be audible whatever the setting. */
   private hidden = false;
 
@@ -40,7 +23,6 @@ export class Music {
 
   set enabled(enabled: boolean) {
     this.wanted = enabled;
-    writePreference(enabled);
     this.apply();
   }
 

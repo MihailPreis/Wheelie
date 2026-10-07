@@ -22,6 +22,8 @@ const CRASH_RESTART_TICKS = ticksFor(3000);
 const HARD_CRASH_RESTART_TICKS = ticksFor(1000);
 const FINISH_TICKS = ticksFor(1000);
 const TRACK_NAME_TICKS = ticksFor(3000);
+/** The demo behind the menus runs in slow motion, as in the original. */
+const DEMO_TICK_MILLISECONDS = 50;
 
 type Phase =
   /** The simulation is running. */
@@ -29,7 +31,9 @@ type Phase =
   /** The rider is down; the scene is frozen until the restart. */
   | 'crashed'
   /** The finish line has been crossed; the bike rolls on for a moment. */
-  | 'finished';
+  | 'finished'
+  /** The run is over and the scene stands still until something else is loaded. */
+  | 'done';
 
 export interface Track {
   name: string;
@@ -72,7 +76,11 @@ export class Game {
   lookAhead = true;
   /** Height of the on-screen keypad in CSS pixels; the scene is lifted by half of it. */
   keypadHeight = 0;
-  /** Called when a run reaches the finish, after the bike has rolled out. */
+  /** Draw the clock, the progress bar and messages. Off while a menu covers the scene. */
+  hud = true;
+  /** While set, time stands still. */
+  paused = false;
+  /** Called when a run reaches the finish, after the bike has rolled out. The scene then stands still. */
   onFinish: ((result: RunResult) => void) | null = null;
 
   private readonly ctx: CanvasRenderingContext2D;
@@ -82,6 +90,7 @@ export class Game {
   private sim: Sim | null = null;
   private track: Track | null = null;
   private league = 0;
+  private demo = false;
 
   private phase: Phase = 'riding';
   private phaseTicks = 0;
@@ -134,21 +143,30 @@ export class Game {
     };
   }
 
-  /** Puts the bike on the start of a track. Throws if the track cannot be used. */
-  load(track: Track, league: number): void {
+  /**
+   * Puts the bike on the start of a track. With `demo` the built-in rider drives, for the scene
+   * behind the menus. Throws if the track cannot be used.
+   */
+  load(track: Track, league: number, demo = false): void {
     // Constructed first so an invalid track leaves the current run untouched.
-    const sim = new Sim({ track: track.data, league });
+    const sim = new Sim({ track: track.data, league, demo });
     this.sim = sim;
     this.track = track;
     this.league = league;
-    this.begin(true);
+    this.demo = demo;
+    this.begin(!demo);
   }
 
   /** Starts the current track over (`GDActivity.restart`). */
   restart(): void {
     if (!this.track) return;
-    this.sim = new Sim({ track: this.track.data, league: this.league });
-    this.begin(true);
+    this.sim = new Sim({ track: this.track.data, league: this.league, demo: this.demo });
+    this.begin(!this.demo);
+  }
+
+  /** Whether a run is under way that pausing would interrupt. */
+  get riding(): boolean {
+    return !this.demo && this.sim !== null && this.phase !== 'done';
   }
 
   private begin(showName: boolean): void {
@@ -162,6 +180,8 @@ export class Game {
     copyPose(this.current, this.previous);
     this.previousLookX = this.previousLookY = 0;
     this.pending = 0;
+    this.message = null;
+    this.messageTicks = 0;
     if (showName) this.showMessage(this.track.name, TRACK_NAME_TICKS);
   }
 
@@ -188,12 +208,17 @@ export class Game {
     const elapsed = Math.min(gap, MAX_FRAME_MILLISECONDS);
     this.lastFrame = now;
     if (gap > 0 && gap < MAX_FRAME_MILLISECONDS) this.watchFrameRate(gap);
-    this.pending += elapsed;
-    while (this.pending >= TICK_MILLISECONDS) {
-      this.pending -= TICK_MILLISECONDS;
-      this.tick();
+    const interval = this.demo ? DEMO_TICK_MILLISECONDS : TICK_MILLISECONDS;
+    if (this.paused) {
+      this.pending = 0;
+    } else {
+      this.pending += elapsed;
+      while (this.pending >= interval) {
+        this.pending -= interval;
+        this.tick();
+      }
     }
-    this.draw(this.pending / TICK_MILLISECONDS);
+    this.draw(this.paused ? 1 : this.pending / interval);
     this.frameRequest = requestAnimationFrame(this.frame);
   };
 
@@ -228,7 +253,7 @@ export class Game {
   /** Advances the game by one simulation tick. Public so tests can drive it without a clock. */
   tick(): void {
     const sim = this.sim;
-    if (!sim) return;
+    if (!sim || this.phase === 'done') return;
     if (this.messageTicks > 0 && --this.messageTicks === 0) this.message = null;
 
     if (this.phase === 'crashed') {
@@ -240,7 +265,7 @@ export class Game {
       return;
     }
 
-    const controls = this.input.read();
+    const controls = this.demo ? { throttle: 0, lean: 0 } : this.input.read();
     const status = sim.step(controls.throttle, controls.lean);
     copyPose(this.current, this.previous);
     this.previousLookX = this.animator.lookX;
@@ -248,6 +273,12 @@ export class Game {
     sim.capture(this.current);
     const viewport = this.viewport;
     this.animator.step(this.current, sim.terrain, this.lookAhead, Math.min(viewport.width, viewport.height));
+
+    if (this.demo) {
+      // Menu.showMenu: the demo rider starts over as soon as the run ends in any way.
+      if (status !== Status.Riding && status !== Status.BeforeStart) this.restart();
+      return;
+    }
 
     if (this.phase === 'finished') {
       if (status === Status.Crashed || --this.phaseTicks <= 0) this.finish();
@@ -271,9 +302,9 @@ export class Game {
   }
 
   private finish(): void {
-    const result = this.result;
-    this.restart();
-    if (result) this.onFinish?.(result);
+    this.phase = 'done';
+    this.message = null;
+    if (this.result) this.onFinish?.(this.result);
   }
 
   private draw(alpha: number): void {
@@ -286,7 +317,7 @@ export class Game {
 
     // Blend the last two ticks so motion stays smooth at any display rate.
     const blended = this.blended;
-    const a = this.phase === 'crashed' ? 1 : alpha;
+    const a = this.phase === 'crashed' || this.phase === 'done' ? 1 : alpha;
     const mix = (from: number, to: number) => from + (to - from) * a;
     copyPose(this.current, blended);
     for (let i = 0; i < blended.x.length; i++) {
@@ -306,6 +337,7 @@ export class Game {
     this.animator.lookX = lookX;
     this.animator.lookY = lookY;
 
+    if (!this.hud) return;
     drawHud(ctx, viewport, {
       progress: blended.progress / 65536,
       time: this.result ? this.result.time : sim.raceTime,
