@@ -27,9 +27,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('main menu leads to every section and back', async ({ page }) => {
-  await expect(items(page)).toHaveText(['Play Menu', 'Mods', 'My runs', 'Options', 'Help', 'About']);
+  await expect(items(page)).toHaveText(['Play Menu', 'Mods', 'My runs', 'Editor', 'Options', 'Help', 'About']);
 
-  await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
+  await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('Help');
   await press(page, 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('Keys');
@@ -43,7 +43,7 @@ test('main menu leads to every section and back', async ({ page }) => {
 });
 
 test('options are toggled and remembered', async ({ page }) => {
-  await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
+  await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('Options');
   const perspective = page.locator('.menu-item', { hasText: 'Perspective' }).locator('.menu-value');
   await expect(perspective).toHaveText('On');
@@ -53,7 +53,7 @@ test('options are toggled and remembered', async ({ page }) => {
   await page.reload();
   await page.keyboard.press('Enter');
   await expect(title(page)).toHaveText('Main', { timeout: 10_000 });
-  await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
+  await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(perspective).toHaveText('Off');
 });
 
@@ -262,4 +262,63 @@ test('a run shared as a link opens as a replay in a fresh browser', async ({ pag
   await visitor.keyboard.press('Enter');
   await expect(visitor.locator('.menu-item .menu-label')).toHaveCount(3);
   await other.close();
+});
+
+test('a track is made in the editor, test-driven and played as a pack', async ({ page }) => {
+  const editor = page.locator('.editor');
+  const canvas = page.locator('.editor-canvas');
+  const click = (label: string | RegExp) => page.locator('.menu-label', { hasText: label }).first().click();
+  const button = (label: string) => page.locator('.editor-button', { hasText: label });
+
+  await click('Editor');
+  await expect(title(page)).toHaveText('Editor');
+  await click('New track');
+  await expect(editor).toBeVisible();
+  await expect(page.locator('.editor-name')).toHaveValue('My track 1');
+
+  // Add a point, undo it, redo it.
+  await expect(button('Undo')).toBeDisabled();
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('The editor canvas is not laid out');
+  await canvas.dblclick({ position: { x: box.width / 2 + 3, y: box.height / 2 + 60 } });
+  await expect(button('Undo')).toBeEnabled();
+  await expect(button('Delete')).toBeEnabled();
+  await button('Undo').click();
+  await expect(button('Redo')).toBeEnabled();
+  await button('Redo').click();
+
+  await page.locator('.editor-name').fill('Bumpy road');
+  await page.keyboard.press('Enter');
+
+  // A test drive runs the real game on the track and returns to the editor.
+  await button('Test').click();
+  await expect(editor).toBeHidden();
+  await page.keyboard.down('ArrowUp');
+  await page.waitForTimeout(1500);
+  await page.keyboard.up('ArrowUp');
+  await page.keyboard.press('Escape');
+  await expect(editor).toBeVisible();
+
+  // The draft was saved as it was edited.
+  await button('Done').click();
+  await expect(items(page).nth(2)).toHaveText('Bumpy road');
+  await page.reload();
+  await page.keyboard.press('Enter');
+  await expect(title(page)).toHaveText('Main', { timeout: 10_000 });
+  await click('Editor');
+  await click('Bumpy road');
+  await expect(texts(page).nth(1)).toHaveText('14 points');
+  await press(page, 'Escape');
+
+  // The drafts download as a pack the original game reads…
+  const [download] = await Promise.all([page.waitForEvent('download'), click('Save levels.mrg')]);
+  expect(download.suggestedFilename()).toBe('levels.mrg');
+  const pack = readFileSync(await download.path());
+  expect(pack.readInt32BE(0)).toBe(1);
+  expect(pack.subarray(8, 18).toString('latin1')).toBe('Bumpy_road');
+
+  // …and can be played here as a pack of their own.
+  await click('Play my tracks');
+  await expect(title(page)).toHaveText('Play');
+  await expect(page.locator('.menu-item', { hasText: 'Track' }).locator('.menu-value')).toHaveText('Bumpy road');
 });

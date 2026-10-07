@@ -1,0 +1,82 @@
+/* The track editor covers the game; same font, black on white, green for what is selected. */
+.editor {
+  position: fixed;
+  inset: 0;
+  background: #fff;
+  color: #000;
+  font-size: calc(var(--dp) * 15px);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.editor[hidden] {
+  display: none;
+}
+
+.editor-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.editor-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--dp) * 6px);
+  padding: calc(var(--dp) * 8px);
+  padding-top: calc(var(--dp) * 8px + env(safe-area-inset-top, 0px));
+  background: rgb(255 255 255 / 85%);
+}
+
+.editor-name,
+.editor-button {
+  padding: calc(var(--dp) * 6px) calc(var(--dp) * 8px);
+  border: calc(var(--dp) * 1px) solid #000;
+  background: #fff;
+  color: #000;
+  font: inherit;
+}
+
+.editor-name {
+  flex: 1 1 calc(var(--dp) * 120px);
+  min-width: 0;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.editor-button {
+  flex: none;
+  cursor: pointer;
+}
+
+.editor-button:disabled {
+  color: #aaa;
+  border-color: #aaa;
+  cursor: default;
+}
+
+.editor-button-on,
+.editor-button:not(:disabled):active {
+  color: #fff;
+  background: #29aa27;
+  border-color: #29aa27;
+}
+
+.editor-status {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: calc(var(--dp) * 8px);
+  padding-bottom: calc(var(--dp) * 8px + env(safe-area-inset-bottom, 0px));
+  background: rgb(255 255 255 / 85%);
+  color: #555;
+  pointer-events: none;
+}

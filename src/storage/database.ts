@@ -5,8 +5,8 @@
 
 const DATABASE = 'wheelie';
 /** Every table, with the property its records are keyed by. Adding one means raising the version. */
-const TABLES = { packs: 'id', replays: 'id' } as const;
-const VERSION = 2;
+const TABLES = { packs: 'id', replays: 'id', drafts: 'id' } as const;
+const VERSION = 3;
 
 export type TableName = keyof typeof TABLES;
 

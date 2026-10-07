@@ -2,7 +2,7 @@
 
 **An unofficial fan-made web port of Gravity Defied** — the classic 2004 trial racing game for J2ME phones, playable in the browser.
 
-> **Status: early development.** The original game is playable at https://mihailpreis.github.io/Wheelie/ — all 30 tracks, menus, unlocks, high scores and options, with a keyboard, a gamepad or a touch screen, plus close to a thousand community level packs. It installs as an app and works offline. Every run is recorded and can be watched again, saved as a file or sent as a link. Image and GIF export and the editor are not there yet. The list below describes what is being built, not what exists today.
+> **Status: early development.** The original game is playable at https://mihailpreis.github.io/Wheelie/ — all 30 tracks, menus, unlocks, high scores and options, with a keyboard, a gamepad or a touch screen, plus close to a thousand community level packs. It installs as an app and works offline. Every run is recorded and can be watched again, saved as a file or sent as a link. A run can be exported as an image card or an animated GIF, and tracks can be drawn in a built-in editor and saved as a `levels.mrg` pack. The list below describes what is being built, not what exists today.
 
 ## What it is
 

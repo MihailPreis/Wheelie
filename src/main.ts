@@ -3,6 +3,8 @@ import { Music } from './audio/music';
 import { AudioOutput } from './audio/output';
 import { Sound } from './audio/sound';
 import { APP_NAME, APP_TAGLINE, resolveShareBaseUrl } from './config';
+import { Drafts } from './editor/drafts';
+import { Editor } from './editor/editor';
 import { Game } from './game/game';
 import { Input } from './game/input';
 import { Library } from './mods/library';
@@ -127,6 +129,8 @@ async function main(): Promise<void> {
   const menu = new MenuView((name) => `${base}assets/sprites/3x/${name}.png`);
   const replayStore = new ReplayStore();
   const controls = new PlayerControls(game);
+  const editor = new Editor();
+  const drafts = new Drafts();
   const output = new AudioOutput();
   const music = new Music(output, `${base}assets/audio/go.ogg`);
   const sound = new Sound(output);
@@ -140,7 +144,7 @@ async function main(): Promise<void> {
   dots.alt = '';
   menuButton.append(dots);
   menuButton.hidden = true;
-  document.body.append(menu.element, keypad.element, menuButton, controls.element);
+  document.body.append(menu.element, keypad.element, menuButton, controls.element, editor.element);
 
   const layout = () => {
     root.style.setProperty('--dp', String(game.scale));
@@ -166,10 +170,13 @@ async function main(): Promise<void> {
     sound,
     menuButton,
     controls,
+    editor,
+    drafts,
     layout,
     () => {
       library.clear();
       replayStore.clear();
+      drafts.clear();
     },
   );
   if (matchMedia('(pointer: coarse)').matches) input.touch(-1, null);

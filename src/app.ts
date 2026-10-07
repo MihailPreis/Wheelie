@@ -1,6 +1,10 @@
 import type { Music } from './audio/music';
 import type { Sound } from './audio/sound';
 import { PHYSICS_VERSION } from './core/version';
+import type { Drafts } from './editor/drafts';
+import type { Editor } from './editor/editor';
+import { type EditorTrack, toTrackData } from './editor/model';
+import { EditorScreens } from './editor/screens';
 import { decodeReplay, encodeReplay, hashTrack, MAX_REPLAY_BYTES, Outcome, type Replay } from './formats/replay';
 import type { Game, RecordedRun, RunResult, Track } from './game/game';
 import { GamepadNavigator } from './game/gamepad-nav';
@@ -30,7 +34,7 @@ import {
 } from './game/progress';
 import { loadSettings, normalizeName, type Settings, saveSettings } from './game/settings';
 import type { Library } from './mods/library';
-import { ORIGINAL_PACK_ID, type Pack } from './mods/pack';
+import { buildPack, ORIGINAL_PACK_ID, type Pack } from './mods/pack';
 import { ModsScreens, type ScreenBuilder } from './mods/screens';
 import type { PlayerControls } from './player/controls';
 import type { Sprites } from './render/sprites';
@@ -91,6 +95,9 @@ export class App {
   private trackCounts: number[];
   private readonly mods: ModsScreens;
   private readonly replays: ReplayScreens;
+  private readonly editorScreens: EditorScreens;
+  /** A track from the editor is being tried out. */
+  private testing = false;
   private readonly padNavigator = new GamepadNavigator();
 
   private current: ScreenBuilder | null = null;
@@ -119,6 +126,8 @@ export class App {
     private readonly sound: Sound,
     private readonly menuButton: HTMLElement,
     private readonly controls: PlayerControls,
+    private readonly editor: Editor,
+    drafts: Drafts,
     private readonly onLayout: () => void,
     private readonly onReset: () => void,
   ) {
@@ -172,6 +181,37 @@ export class App {
       replayStore,
     );
     controls.onClose = () => this.stopWatching();
+    this.editorScreens = new EditorScreens(
+      {
+        open: (builder) => this.open(builder),
+        alert: (title, text, then) => this.alert(title, text, then),
+        parent: this.mainMenu,
+        selectedTrack: () => this.trackAt(this.progress.selectedLevel, this.selectedTrack) ?? null,
+        edit: (draft, back) => {
+          this.menu.hide();
+          this.current = null;
+          editor.onChange = (track) => {
+            draft.track = track;
+            void drafts.save(draft);
+          };
+          editor.onTest = (track) => this.startTest(track);
+          editor.onClose = () => {
+            editor.hide();
+            this.updateKeypad();
+            back();
+          };
+          editor.open(draft.track);
+          this.updateKeypad();
+        },
+        playPack: (bytes) => {
+          const id = 'file-mytracks';
+          void library
+            .put({ id, name: S.myTracks, author: this.settings.name, bytes, installed: Date.now() })
+            .then(() => this.usePack(buildPack(id, S.myTracks, this.settings.name, bytes)));
+        },
+      },
+      drafts,
+    );
 
     game.onFinish = (result) => this.finished(result);
     game.onRun = (run) => this.recordRun(run);
@@ -222,7 +262,8 @@ export class App {
   /** The keypad shows on touch devices: always while riding, and in the menus if the option says so. */
   private updateKeypad(): void {
     const touch = this.input.device === 'touch';
-    this.keypad.visible = touch && !this.watching && (this.playing || this.settings.keypadInMenu);
+    this.keypad.visible =
+      touch && !this.watching && !this.editor.visible && (this.playing || this.settings.keypadInMenu);
     this.menuButton.hidden = !this.playing || this.menu.visible || this.watching;
     this.onLayout();
   }
@@ -248,6 +289,7 @@ export class App {
   keyDown(event: KeyboardEvent): boolean {
     this.music.unlock();
     if (this.watching) return this.controls.key(event);
+    if (this.editor.visible) return this.editor.key(event);
     if (this.menu.visible) {
       if (event.key.length === 1 && this.menu.typeLetter(event.key)) return true;
       const key = MENU_KEYS[event.code];
@@ -269,6 +311,10 @@ export class App {
     for (const action of this.padNavigator.poll(now)) {
       if (this.watching) {
         this.controls.pad(action);
+        continue;
+      }
+      if (this.editor.visible) {
+        if (action === 'back') this.editor.onClose?.();
         continue;
       }
       if (action === 'pause') {
@@ -358,6 +404,10 @@ export class App {
   }
 
   private pause(): void {
+    if (this.testing) {
+      this.stopTest('');
+      return;
+    }
     if (!this.playing || this.menu.visible || !this.game.riding) return;
     this.game.paused = true;
     this.showMenu(this.ingameMenu);
@@ -374,6 +424,7 @@ export class App {
 
   /** Keeps a run as a replay, once riding it again has been seen to end the same way. */
   private recordRun(run: RecordedRun): void {
+    if (this.testing) return;
     const track = this.trackAt(this.level, this.track);
     // A run given up within the first seconds is not worth a place in the list.
     if (!track || (run.outcome !== Outcome.Finished && run.inputs.length < MIN_UNFINISHED_TICKS)) return;
@@ -415,6 +466,37 @@ export class App {
       wheelie: replay.wheelie,
       time: replay.time,
     });
+  }
+
+  // ---- trying out a track from the editor --------------------------------------------------
+
+  private startTest(track: EditorTrack): void {
+    try {
+      this.game.load({ name: track.name, data: toTrackData(track) }, this.progress.selectedLeague);
+    } catch {
+      this.editor.show(S.editorTestFailed);
+      return;
+    }
+    this.editor.hide();
+    this.testing = true;
+    this.playing = true;
+    this.game.paused = false;
+    this.game.hud = true;
+    this.game.options.dimmed = false;
+    this.updateKeypad();
+  }
+
+  /** Back to the editor, where the test drive was started from. */
+  private stopTest(message: string): void {
+    this.testing = false;
+    this.playing = false;
+    this.game.paused = false;
+    this.game.hud = false;
+    this.game.options.dimmed = true;
+    this.input.release();
+    this.loadDemo();
+    this.editor.show(message);
+    this.updateKeypad();
   }
 
   // ---- watching a replay ------------------------------------------------------------------
@@ -558,6 +640,10 @@ export class App {
   // ---- finishing a run --------------------------------------------------------------------
 
   private finished(result: RunResult): void {
+    if (this.testing) {
+      this.stopTest(S.editorTestFinished(formatScoreTime(Math.floor(result.time / 10))));
+      return;
+    }
     const time = Math.floor(result.time / 10);
     const league = this.progress.selectedLeague;
     const scores = loadScores(this.pack.id, this.level, this.track);
@@ -685,6 +771,7 @@ export class App {
       this.link(S.playMenu, this.playMenu),
       { kind: 'action', label: S.mods, run: () => this.open(this.mods.menu) },
       { kind: 'action', label: S.myRuns, run: () => void this.replays.openList() },
+      { kind: 'action', label: S.editor, run: () => void this.editorScreens.openList() },
       this.link(S.options, this.optionsMenu(this.mainMenu)),
       this.link(S.help, this.helpMenu(this.mainMenu)),
       this.link(S.about, this.textScreen(S.about, S.aboutText, this.mainMenu)),
