@@ -1,7 +1,7 @@
 import type { Music } from './audio/music';
 import type { Sound } from './audio/sound';
 import { PHYSICS_VERSION } from './core/version';
-import { decodeReplay, encodeReplay, hashTrack, Outcome, type Replay } from './formats/replay';
+import { decodeReplay, encodeReplay, hashTrack, MAX_REPLAY_BYTES, Outcome, type Replay } from './formats/replay';
 import type { Game, RecordedRun, RunResult, Track } from './game/game';
 import { GamepadNavigator } from './game/gamepad-nav';
 import {
@@ -30,10 +30,11 @@ import {
 } from './game/progress';
 import { loadSettings, normalizeName, type Settings, saveSettings } from './game/settings';
 import type { Library } from './mods/library';
-import { buildPack, ORIGINAL_PACK_ID, type Pack } from './mods/pack';
+import { ORIGINAL_PACK_ID, type Pack } from './mods/pack';
 import { ModsScreens, type ScreenBuilder } from './mods/screens';
 import type { PlayerControls } from './player/controls';
 import { ReplayScreens } from './replay/screens';
+import { decodeFragment, isReplayFragment } from './replay/share';
 import { verifyReplay } from './replay/simulate';
 import type { ReplayStore, StoredReplay } from './replay/store';
 import { removeAll, writeJson } from './storage/store';
@@ -104,9 +105,10 @@ export class App {
   constructor(
     private pack: Pack,
     private readonly original: Pack,
-    private readonly library: Library,
+    library: Library,
     private readonly replayStore: ReplayStore,
     baseUrl: string,
+    shareBaseUrl: string,
     private readonly game: Game,
     private readonly input: Input,
     private readonly keypad: Keypad,
@@ -144,6 +146,8 @@ export class App {
         open: (builder) => this.open(builder),
         parent: this.mainMenu,
         watch: (replay, back) => void this.watch(replay, back),
+        importReplay: (bytes) => void this.importReplay(bytes),
+        shareBaseUrl,
       },
       replayStore,
     );
@@ -189,12 +193,6 @@ export class App {
     if (isCheatName(this.settings.name)) unlockEverything(this.progress, this.trackCounts);
     writeJson(ACTIVE_PACK_KEY, pack.id);
     this.showFrontMenu(this.playMenu);
-  }
-
-  /** A `.mrg` file was dropped on the page. */
-  installFile(file: File): void {
-    if (this.playing) return;
-    void this.mods.installFile(file);
   }
 
   private saveProgress(): void {
@@ -402,26 +400,20 @@ export class App {
   // ---- watching a replay ------------------------------------------------------------------
 
   /** The track a replay was made on, or the reason it cannot be shown. */
-  private async trackFor(replay: Replay): Promise<Track | string> {
+  private async trackFor(replay: Replay): Promise<{ track: Track; packName: string } | string> {
     if (replay.physicsVersion !== PHYSICS_VERSION) return S.replayOtherVersion;
     if (replay.trackData) {
       if (hashTrack(replay.trackData) !== replay.trackHash) return S.replayDamaged;
-      return { name: replay.trackName, data: replay.trackData };
+      return { track: { name: replay.trackName, data: replay.trackData }, packName: S.ownLevels };
     }
     let pack: Pack | null = null;
     if (replay.packId === this.pack.id) pack = this.pack;
     else if (replay.packId === ORIGINAL_PACK_ID) pack = this.original;
-    else {
-      const installed = await this.library.get(replay.packId);
-      try {
-        if (installed) pack = buildPack(installed.id, installed.name, installed.author, installed.bytes);
-      } catch {
-        // Treated as not installed.
-      }
-    }
+    // A pack of the bundled catalogue is installed on the spot if it is not there yet.
+    else pack = await this.mods.obtain(replay.packId);
     const track = pack?.levels[replay.level]?.[replay.track];
-    if (!track) return S.replayNoPack;
-    return hashTrack(track.data) === replay.trackHash ? track : S.replayChangedTrack;
+    if (!pack || !track) return S.replayNoPack;
+    return hashTrack(track.data) === replay.trackHash ? { track, packName: pack.name } : S.replayChangedTrack;
   }
 
   /** Plays a saved run; `back` is the screen to return to afterwards. */
@@ -434,11 +426,12 @@ export class App {
       fail(S.replayDamaged);
       return;
     }
-    const track = await this.trackFor(replay);
-    if (typeof track === 'string') {
-      fail(track);
-      return;
-    }
+    const found = await this.trackFor(replay);
+    if (typeof found === 'string') fail(found);
+    else this.startWatching(replay, found.track, back, fail);
+  }
+
+  private startWatching(replay: Replay, track: Track, back: ScreenBuilder, fail: (text: string) => void): void {
     try {
       this.game.watch(track, replay.league, { inputs: replay.inputs, finishTime: replay.time });
     } catch {
@@ -447,6 +440,7 @@ export class App {
     }
     this.watching = true;
     this.afterWatching = back;
+    this.playing = false;
     this.game.paused = false;
     this.game.hud = true;
     this.game.options.dimmed = false;
@@ -454,6 +448,75 @@ export class App {
     this.current = null;
     this.controls.show();
     this.updateKeypad();
+  }
+
+  /**
+   * Takes in a replay from outside — a file or a link. It is checked by riding it again, kept
+   * with the player's own runs and played.
+   */
+  async importReplay(bytes: Uint8Array): Promise<void> {
+    if (this.playing && !this.menu.visible) return;
+    const back: ScreenBuilder = () => this.mainMenu();
+    const fail = (text: string) => this.alert(S.myRuns, text, () => this.open(back));
+    this.open(() => ({ title: S.myRuns, back: null, items: [{ kind: 'text', html: S.openingReplay }] }));
+    let replay: Replay;
+    try {
+      replay = decodeReplay(bytes);
+    } catch {
+      fail(S.replayDamaged);
+      return;
+    }
+    const found = await this.trackFor(replay);
+    if (typeof found === 'string') {
+      fail(found);
+      return;
+    }
+    if (!verifyReplay(found.track.data, replay)) {
+      fail(S.replayDamaged);
+      return;
+    }
+    const known = (await this.replayStore.list()).some(
+      (stored) => stored.bytes.length === bytes.length && stored.bytes.every((byte, index) => byte === bytes[index]),
+    );
+    if (!known) {
+      await this.replayStore.add({
+        bytes,
+        packId: replay.packId,
+        packName: found.packName,
+        level: replay.level,
+        track: replay.track,
+        league: replay.league,
+        trackName: replay.trackName,
+        player: replay.player,
+        date: replay.date * 1000,
+        outcome: replay.outcome,
+        wheelie: replay.wheelie,
+        time: replay.time,
+      });
+    }
+    this.startWatching(replay, found.track, back, fail);
+  }
+
+  /** Opens the replay carried by a link's fragment, if there is one. */
+  async openLink(fragment: string): Promise<void> {
+    if (!isReplayFragment(fragment)) return;
+    try {
+      await this.importReplay(await decodeFragment(fragment));
+    } catch {
+      this.alert(S.myRuns, S.replayDamaged, () => this.open(this.mainMenu));
+    }
+  }
+
+  /** A file was dropped on the page: a replay is played, anything else is taken for a level pack. */
+  async openFile(file: File): Promise<void> {
+    if (this.playing && !this.menu.visible) return;
+    const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+    if (head[0] === 0x47 && head[1] === 0x44 && head[2] === 0x52 && head[3] === 0x1a) {
+      if (file.size <= MAX_REPLAY_BYTES) await this.importReplay(new Uint8Array(await file.arrayBuffer()));
+      else this.alert(S.myRuns, S.replayDamaged, () => this.open(this.mainMenu));
+    } else {
+      await this.mods.installFile(file);
+    }
   }
 
   private afterWatching: ScreenBuilder | null = null;

@@ -2,7 +2,7 @@ import { ACTIVE_PACK_KEY, App } from './app';
 import { Music } from './audio/music';
 import { AudioOutput } from './audio/output';
 import { Sound } from './audio/sound';
-import { APP_NAME, APP_TAGLINE } from './config';
+import { APP_NAME, APP_TAGLINE, resolveShareBaseUrl } from './config';
 import { Game } from './game/game';
 import { Input } from './game/input';
 import { Library } from './mods/library';
@@ -10,6 +10,7 @@ import { buildPack, ORIGINAL_PACK_ID, type Pack } from './mods/pack';
 import { PlayerControls } from './player/controls';
 import { GAME_FONT } from './render/hud';
 import { loadSprites } from './render/sprites';
+import { isReplayFragment } from './replay/share';
 import { ReplayStore } from './replay/store';
 import { readJson } from './storage/store';
 import './style.css';
@@ -30,7 +31,7 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, className: strin
  * Two opening screens over a progress bar, as in the original: this game's logo, then the credit
  * for the game it is a port of. They stay up while `work` runs and can be skipped once it is done.
  */
-async function splash<T>(base: string, work: Promise<T>): Promise<T> {
+async function splash<T>(base: string, work: Promise<T>, brief: boolean): Promise<T> {
   const root = element('div', 'splash');
   const progress = element('div', 'splash-progress');
   const bar = element('div', 'splash-progress-bar');
@@ -39,7 +40,8 @@ async function splash<T>(base: string, work: Promise<T>): Promise<T> {
   root.append(progress, content);
   document.body.append(root);
 
-  let skipped = false;
+  // Someone following a link to a replay came for the replay.
+  let skipped = brief;
   const skip = () => {
     skipped = true;
   };
@@ -67,7 +69,7 @@ async function splash<T>(base: string, work: Promise<T>): Promise<T> {
     credit.textContent = STRINGS.splashCredit;
     content.replaceChildren(credit);
     const result = await work;
-    skipped = false;
+    skipped = brief;
     await hold(0.5, 1);
     return result;
   } finally {
@@ -113,7 +115,11 @@ async function main(): Promise<void> {
   const dp = () => Math.max(1, Math.min(window.innerWidth, window.innerHeight) / 360);
   root.style.setProperty('--dp', String(dp()));
 
-  const { sprites, pack, original, library } = await splash(base, loadEverything(base));
+  const { sprites, pack, original, library } = await splash(
+    base,
+    loadEverything(base),
+    isReplayFragment(location.hash),
+  );
 
   const input = new Input();
   const game = new Game(canvas, sprites, input);
@@ -150,6 +156,7 @@ async function main(): Promise<void> {
     library,
     replayStore,
     base,
+    resolveShareBaseUrl(import.meta.env.VITE_SHARE_BASE_URL, location),
     game,
     input,
     keypad,
@@ -185,7 +192,7 @@ async function main(): Promise<void> {
   window.addEventListener('drop', (event) => {
     event.preventDefault();
     const file = event.dataTransfer?.files[0];
-    if (file) app.installFile(file);
+    if (file) void app.openFile(file);
   });
   canvas.addEventListener('click', () => app.sceneTap());
   window.addEventListener('pointermove', () => controls.wake());
@@ -213,6 +220,16 @@ async function main(): Promise<void> {
   layout();
   app.start();
   game.start();
+
+  // A link to a replay opens straight into it; the replay is then kept, so the address is cleaned.
+  const openLink = () => {
+    const fragment = location.hash;
+    if (!isReplayFragment(fragment)) return;
+    history.replaceState(null, '', location.pathname + location.search);
+    void app.openLink(fragment);
+  };
+  window.addEventListener('hashchange', openLink);
+  openLink();
 }
 
 main().catch((error) => {

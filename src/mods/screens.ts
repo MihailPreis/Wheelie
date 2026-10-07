@@ -288,6 +288,28 @@ export class ModsScreens {
     };
   }
 
+  /**
+   * A pack by its identifier, ready to play: from the library, or fetched from the bundled
+   * catalogue and installed. Null if it is neither.
+   */
+  async obtain(id: string): Promise<Pack | null> {
+    try {
+      const installed = await this.library.get(id);
+      if (installed) return buildPack(installed.id, installed.name, installed.author, installed.bytes);
+      this.catalog ??= await loadCatalog(this.baseUrl);
+      const listed = this.catalog.find((pack) => catalogId(pack) === id && !pack.broken);
+      if (!listed) return null;
+      const bytes = await downloadPack(this.baseUrl, listed);
+      const pack = buildPack(id, listed.name, listed.author, bytes);
+      const record: InstalledPack = { id, name: listed.name, author: listed.author, bytes, installed: Date.now() };
+      await this.library.put(record);
+      this.installed.set(id, record);
+      return pack;
+    } catch {
+      return null;
+    }
+  }
+
   // ---- the player's own files -------------------------------------------------------------
 
   private pickFile(): void {

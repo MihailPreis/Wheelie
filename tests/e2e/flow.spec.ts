@@ -161,7 +161,7 @@ test('a run is recorded and listed under My runs', async ({ page }) => {
 
   await press(page, 'Escape', 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('My runs');
-  await expect(items(page)).toHaveCount(2);
+  await expect(items(page)).toHaveCount(3);
   await expect(items(page).first()).toContainText('100cc');
 
   // It is still there after a reload, and can be deleted.
@@ -169,7 +169,7 @@ test('a run is recorded and listed under My runs', async ({ page }) => {
   await page.keyboard.press('Enter');
   await expect(title(page)).toHaveText('Main', { timeout: 10_000 });
   await press(page, 'ArrowDown', 'ArrowDown', 'Enter');
-  await expect(items(page)).toHaveCount(2);
+  await expect(items(page)).toHaveCount(3);
   await press(page, 'Enter');
   await expect(texts(page).nth(1)).toContainText('Result');
 
@@ -201,7 +201,47 @@ test('a run is recorded and listed under My runs', async ({ page }) => {
   await expect(page.locator('.player')).toBeHidden();
   await expect(texts(page).nth(1)).toContainText('Result');
 
-  // Delete is the second action on the screen of a run.
-  await press(page, 'ArrowDown', 'Enter');
+  // Delete is the third action on the screen of a run.
+  await press(page, 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(texts(page).first()).toContainText('No runs yet');
+});
+
+test('a run shared as a link opens as a replay in a fresh browser', async ({ page, context, browser }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await press(page, 'Enter', 'Enter');
+  await expect(page.locator('.menu')).toBeHidden();
+  await page.keyboard.down('ArrowUp');
+  await page.waitForTimeout(4000);
+  await page.keyboard.up('ArrowUp');
+  await press(page, 'Escape', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
+  await press(page, 'Escape', 'ArrowDown', 'ArrowDown', 'Enter');
+  await expect(title(page)).toHaveText('My runs');
+
+  // The run → Share → Copy link.
+  await press(page, 'Enter', 'ArrowDown', 'Enter');
+  await expect(title(page)).toHaveText('Share');
+  await press(page, 'Enter');
+  await expect(texts(page).nth(1)).toContainText('Link copied');
+  const link = await page.evaluate(() => navigator.clipboard.readText());
+  expect(link).toMatch(/#r=[dp][A-Za-z0-9_-]+$/);
+  expect(link.length).toBeLessThan(400);
+
+  // Someone else opens it: no splash to sit through, no menu, the replay itself.
+  const other = await browser.newContext();
+  const visitor = await other.newPage();
+  await visitor.goto(link);
+  await expect(visitor.locator('.player')).toBeVisible({ timeout: 10_000 });
+  const length = () =>
+    visitor.evaluate(() => (window as unknown as { wheelie: { game: { length: number } } }).wheelie.game.length);
+  expect(await length()).toBeGreaterThan(200);
+  expect(new URL(visitor.url()).hash).toBe('');
+
+  // Leaving the replay leads to the menu, and the run is now among the visitor's own.
+  await visitor.keyboard.press('Escape');
+  await expect(visitor.locator('.menu-title')).toHaveText('Main');
+  await visitor.keyboard.press('ArrowDown');
+  await visitor.keyboard.press('ArrowDown');
+  await visitor.keyboard.press('Enter');
+  await expect(visitor.locator('.menu-item .menu-label')).toHaveCount(3);
+  await other.close();
 });
