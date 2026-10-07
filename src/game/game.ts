@@ -116,6 +116,11 @@ export class Game {
     dimmed: false,
   };
   lookAhead = true;
+  /**
+   * Classic screen: the smaller side of the picture in pixels, as on the phones the game was made
+   * for (176 or 240), shown enlarged. 0 draws at the display's own resolution.
+   */
+  classic = 0;
   /** Height of the on-screen keypad in CSS pixels; the scene is lifted by half of it. */
   keypadHeight = 0;
   /** Draw the clock, the progress bar and messages. Off while a menu covers the scene. */
@@ -197,7 +202,21 @@ export class Game {
     return Math.max(1, Math.min(this.canvas.clientWidth, this.canvas.clientHeight) / BASE_VIEW_SIZE);
   }
 
+  /** Canvas pixels per CSS pixel on the classic screen. */
+  private get classicRatio(): number {
+    return this.classic / Math.max(1, Math.min(this.canvas.clientWidth, this.canvas.clientHeight));
+  }
+
   private get viewport(): Viewport {
+    if (this.classic > 0) {
+      // One dp is one pixel of the small screen, so less of the track fits in view — as it did.
+      const ratio = this.classicRatio;
+      return {
+        width: this.canvas.clientWidth * ratio,
+        height: this.canvas.clientHeight * ratio,
+        lift: (this.keypadHeight * ratio) / 2,
+      };
+    }
     const scale = this.scale;
     return {
       width: this.canvas.clientWidth / scale,
@@ -485,7 +504,10 @@ export class Game {
   /** Keeps the canvas backing store matched to its size on screen, the pixel density and the quality level. */
   private fitCanvas(): number {
     const canvas = this.canvas;
-    const ratio = (window.devicePixelRatio || 1) * this.quality;
+    const classic = this.classic > 0;
+    const ratio = classic ? this.classicRatio : (window.devicePixelRatio || 1) * this.quality;
+    // The few pixels of the classic screen are enlarged as they are, not smoothed.
+    canvas.style.imageRendering = classic ? 'pixelated' : '';
     const width = Math.max(1, Math.round(canvas.clientWidth * ratio));
     const height = Math.max(1, Math.round(canvas.clientHeight * ratio));
     if (canvas.width !== width || canvas.height !== height) {
@@ -582,7 +604,9 @@ export class Game {
     const scale = this.scale;
     const ratio = this.fitCanvas();
     const ctx = this.ctx;
-    ctx.setTransform(ratio * scale, 0, 0, ratio * scale, 0, 0);
+    if (this.classic > 0) ctx.setTransform(1, 0, 0, 1, 0, 0);
+    else ctx.setTransform(ratio * scale, 0, 0, ratio * scale, 0, 0);
+    ctx.imageSmoothingEnabled = this.classic === 0;
 
     // Blend the last two ticks so motion stays smooth at any display rate.
     const blended = this.blended;

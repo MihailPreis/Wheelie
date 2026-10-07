@@ -24,6 +24,8 @@ export interface ReplaysHost {
   importReplay(bytes: Uint8Array): void;
   /** Address that replay links are built on. */
   readonly shareBaseUrl: string;
+  /** Address of the short link service, if there is one. */
+  readonly shortLinkApi: string | null;
   /** What is needed to draw a run away from the screen, or the reason it cannot be drawn. */
   exportSource(replay: StoredReplay): Promise<ExportSource | string>;
   readonly sprites: Sprites;
@@ -39,6 +41,8 @@ export interface ExportSource {
   packAuthor: string;
 }
 
+/** The link service takes no larger picture. */
+const MAX_PREVIEW_BYTES = 400 * 1024;
 const GIF_WIDTH = 480;
 const GIF_HEIGHT = 270;
 
@@ -195,6 +199,19 @@ export class ReplayScreens {
               .catch(() => say(S.linkNotCopied)),
         },
       ];
+      if (this.host.shortLinkApi) {
+        items.push({
+          kind: 'action',
+          label: S.copyShortLink,
+          run: () =>
+            void this.shortLink(replay)
+              .then(async (url) => {
+                await navigator.clipboard.writeText(url);
+                say(S.shortLinkCopied(url));
+              })
+              .catch(() => say(S.shortLinkFailed)),
+        });
+      }
       if (typeof navigator.share === 'function') {
         items.push({
           kind: 'action',
@@ -239,6 +256,35 @@ export class ReplayScreens {
       new Blob([Uint8Array.from(replay.bytes)], { type: 'application/octet-stream' }),
       `${fileName(replay)}.gdr`,
     );
+  }
+
+  /**
+   * Asks the link service for a short address of a run. The result card goes along, so that the
+   * link shows a picture of the run where it is posted.
+   */
+  private async shortLink(replay: StoredReplay): Promise<string> {
+    const base64 = (bytes: Uint8Array) => {
+      let binary = '';
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      return btoa(binary);
+    };
+    const body: { replay: string; image?: string } = { replay: base64(replay.bytes) };
+    try {
+      const card = await this.card(replay, 'wide');
+      if (typeof card !== 'string' && card.size <= MAX_PREVIEW_BYTES) {
+        body.image = base64(new Uint8Array(await card.arrayBuffer()));
+      }
+    } catch {
+      // The link works without a picture.
+    }
+    const response = await fetch(`${this.host.shortLinkApi?.replace(/\/$/, '')}/api/links`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(`The link service answered ${response.status}`);
+    const { url } = (await response.json()) as { url?: unknown };
+    if (typeof url !== 'string' || !/^https:\/\//.test(url)) throw new Error('The link service gave no link');
+    return url;
   }
 
   /** The result card of a run as a PNG, or the reason there is none. */

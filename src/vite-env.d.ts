@@ -3,6 +3,8 @@
 interface ImportMetaEnv {
   /** Base address baked into replay share links. Empty in local development. */
   readonly VITE_SHARE_BASE_URL?: string;
+  /** Address of the short link service (see worker/); short links are offered only if it is set. */
+  readonly VITE_SHORT_LINK_API?: string;
 }
 
 interface ImportMeta {

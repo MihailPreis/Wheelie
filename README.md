@@ -60,6 +60,22 @@ tracks the daily track is drawn from — those the game's demo rider can finish 
 with `pnpm mods:daily`. `pnpm mods:mirror`
 refreshes the mirror; it is run by hand and the result is committed.
 
+### Short links (optional)
+
+A replay link carries the whole replay in the fragment of the address, which works without any
+server but is long and shows no preview where it is posted. `worker/` is a small Cloudflare Worker
+that stores a replay and its result card under a short identifier and serves a page with preview
+tags that leads on to the game. To use it:
+
+```
+cd worker
+npx wrangler kv namespace create LINKS   # put the printed id into wrangler.toml
+npx wrangler deploy
+```
+
+Then build the game with `VITE_SHORT_LINK_API` set to the worker's address (for the Pages deploy:
+the repository variable `SHORT_LINK_API`). Without it the game simply offers no short links.
+
 ### Physics fidelity
 
 The simulation in `src/core` is an integer-only port of the original physics, and it has to match the

@@ -59,6 +59,9 @@ const EN = {
   race: 'Race this run',
   share: 'Share',
   copyLink: 'Copy link',
+  copyShortLink: 'Copy short link',
+  shortLinkCopied: (url: string) => `Copied: ${url}`,
+  shortLinkFailed: 'The short link could not be made. The ordinary link still works.',
   shareVia: 'Share via..',
   saveFile: 'Save replay file',
   saveImage: 'Save image',
@@ -166,6 +169,8 @@ const EN = {
   input: 'Input',
   keysets: ['Keyset 1', 'Keyset 2', 'Keyset 3'] as readonly string[],
   lookAhead: 'Look ahead',
+  screen: 'Screen',
+  screens: ['Modern', 'Classic 240', 'Classic 176'] as readonly string[],
   vibrateOnTouch: 'Vibrate on touch',
   keyboardInMenu: 'Keyboard in menu',
   ghost: 'Ghost',
@@ -209,6 +214,7 @@ The keysets apply to the digit keys and to the on-screen keypad, whose buttons s
 <b>Bike Sprite: On/Off</b><br>Default: &lt;On&gt;<br>&lt;On&gt; uses a texture for the bike. &lt;Off&gt; uses line graphics.<br><br>
 <b>Input: Keyset 1,2,3</b><br>Default: &lt;1&gt;<br>Determines which type of input should be used when playing. See "Keys" in the help menu for more info.<br><br>
 <b>Look ahead: On/Off</b><br>Default: &lt;On&gt;<br>Turns on and off smart camera movement.<br><br>
+<b>Screen: Modern, Classic 240, Classic 176</b><br>Default: &lt;Modern&gt;<br>The classic screens show the game in the few pixels of the phones it was made for.<br><br>
 <b>Vibrate on touch: On/Off</b><br>Default: &lt;On&gt;<br>Enables haptic feedback when you press the on-screen keys.<br><br>
 <b>Keyboard in menu: On/Off</b><br>Default: &lt;On&gt;<br>Turns on and off the on-screen keyboard in menus.<br><br>
 <b>Ghost: On/Off</b><br>Default: &lt;On&gt;<br>Shows your fastest run on the track as a faint bike to race against, with the gap to it under the clock.<br><br>

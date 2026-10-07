@@ -1,0 +1,17 @@
+# Short replay links with previews. Optional: the game works without it.
+#
+#   npx wrangler kv namespace create LINKS      # prints the id to put below
+#   npx wrangler deploy
+#
+# Then build the game with VITE_SHORT_LINK_API set to the address wrangler printed.
+
+name = "wheelie-links"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[vars]
+SITE_URL = "https://mihailpreis.github.io/Wheelie/"
+
+[[kv_namespaces]]
+binding = "LINKS"
+id = "REPLACE_WITH_THE_NAMESPACE_ID"

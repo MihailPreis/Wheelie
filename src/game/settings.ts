@@ -9,6 +9,8 @@ export interface Settings {
   /** 0–2: which keyset the digit keys and the on-screen keypad use. */
   keyset: number;
   lookAhead: boolean;
+  /** 0 the display's resolution, 1 and 2 the classic 240 and 176 pixel screens. */
+  screen: number;
   vibrate: boolean;
   /** Keep the on-screen keypad visible in the menus. */
   keypadInMenu: boolean;
@@ -30,6 +32,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   bikeSprite: true,
   keyset: 0,
   lookAhead: true,
+  screen: 0,
   vibrate: true,
   keypadInMenu: true,
   ghost: true,
@@ -65,6 +68,7 @@ export function loadSettings(): Settings {
     if (typeof stored[key] === 'boolean') settings[key] = stored[key];
   }
   if (stored.keyset === 0 || stored.keyset === 1 || stored.keyset === 2) settings.keyset = stored.keyset;
+  if (stored.screen === 1 || stored.screen === 2) settings.screen = stored.screen;
   settings.name = normalizeName(stored.name);
   return settings;
 }

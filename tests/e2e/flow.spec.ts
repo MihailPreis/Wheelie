@@ -244,6 +244,26 @@ test('a run shared as a link opens as a replay in a fresh browser', async ({ pag
   expect(link).toMatch(/#r=[dp][A-Za-z0-9_-]+$/);
   expect(link.length).toBeLessThan(400);
 
+  // A short link: the replay and its result card go to the link service, its answer to the clipboard.
+  let posted: { replay?: string; image?: string } = {};
+  await page.route('https://links.test/api/links', async (route) => {
+    posted = route.request().postDataJSON() as typeof posted;
+    await route.fulfill({ json: { id: 'abcdefghij', url: 'https://links.test/r/abcdefghij' } });
+  });
+  await pick(page, 'Copy short link');
+  await expect(texts(page).nth(1)).toHaveText('Copied: https://links.test/r/abcdefghij');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('https://links.test/r/abcdefghij');
+  expect(
+    Buffer.from(posted.replay ?? '', 'base64')
+      .subarray(0, 3)
+      .toString(),
+  ).toBe('GDR');
+  expect(
+    Buffer.from(posted.image ?? '', 'base64')
+      .subarray(1, 4)
+      .toString(),
+  ).toBe('PNG');
+
   // The same screen exports the run as a picture and as an animation.
   const save = async (label: RegExp, magic: string, extension: string) => {
     const [download] = await Promise.all([

@@ -48,6 +48,9 @@ import type { Keypad } from './ui/keypad';
 import type { MenuItem, MenuKey, MenuView } from './ui/menu/view';
 import { chooseLanguage, currentLanguage, LANGUAGE_NAMES, LANGUAGES, STRINGS as S } from './ui/strings';
 
+/** Smaller side of the picture, in pixels, for each value of the Screen option. */
+const CLASSIC_SCREENS = [0, 240, 176];
+
 /** Three seconds of riding; shorter unfinished runs are not kept. */
 const MIN_UNFINISHED_TICKS = 200;
 
@@ -124,6 +127,7 @@ export class App {
     private readonly replayStore: ReplayStore,
     baseUrl: string,
     shareBaseUrl: string,
+    shortLinkApi: string | null,
     sprites: Sprites,
     private readonly game: Game,
     private readonly input: Input,
@@ -169,6 +173,7 @@ export class App {
         race: (replay, back) => void this.race(replay, back),
         importReplay: (bytes) => void this.importReplay(bytes),
         shareBaseUrl,
+        shortLinkApi,
         sprites,
         logoUrl: `${baseUrl}assets/brand/wordmark.svg`,
         sceneOptions: () => this.game.options,
@@ -243,6 +248,7 @@ export class App {
     this.game.options.driverSprite = s.driverSprite;
     this.game.options.bikeSprite = s.bikeSprite;
     this.game.lookAhead = s.lookAhead;
+    this.game.classic = CLASSIC_SCREENS[s.screen] ?? 0;
     this.input.keyset = s.keyset;
     this.keypad.vibrate = s.vibrate;
     if (this.music.enabled !== s.music) this.music.enabled = s.music;
@@ -1160,6 +1166,17 @@ export class App {
             },
           },
           toggle(S.lookAhead, 'lookAhead'),
+          {
+            kind: 'option',
+            label: S.screen,
+            options: S.screens,
+            value: s.screen,
+            change: (value) => {
+              s.screen = value;
+              this.saveSettings();
+              this.refresh();
+            },
+          },
           toggle(S.vibrateOnTouch, 'vibrate'),
           toggle(S.keyboardInMenu, 'keypadInMenu'),
           toggle(S.ghost, 'ghost'),

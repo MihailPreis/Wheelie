@@ -170,6 +170,7 @@ async function main(): Promise<void> {
     replayStore,
     base,
     resolveShareBaseUrl(import.meta.env.VITE_SHARE_BASE_URL, location),
+    import.meta.env.VITE_SHORT_LINK_API?.trim() || null,
     sprites,
     game,
     input,

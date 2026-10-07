@@ -29,7 +29,8 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
     },
     {
-      command: `pnpm dev --port ${devPort} --strictPort`,
+      // The link service is stood in for by the tests; the address only has to be set.
+      command: `VITE_SHORT_LINK_API=https://links.test pnpm dev --port ${devPort} --strictPort`,
       url: `http://localhost:${devPort}`,
       reuseExistingServer: !process.env.CI,
     },

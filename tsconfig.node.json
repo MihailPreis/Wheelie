@@ -5,6 +5,6 @@
     "lib": ["ES2023", "DOM"],
     "types": ["node"]
   },
-  "include": ["*.config.ts", "tests/e2e", "src/**/*.test.ts", "src/**/*.d.ts"],
+  "include": ["*.config.ts", "tests/e2e", "src/**/*.test.ts", "src/**/*.d.ts", "worker/src"],
   "exclude": []
 }
