@@ -148,10 +148,13 @@ export class SceneRenderer {
     ctx.lineCap = 'butt';
 
     // GameView.drawGame: centre the camera on the frame, plus the look-ahead offset.
-    const cameraX = Math.floor(((pose.x[BodyIndex.Frame] as number) + animator.lookX) * BODY_SCALE);
-    const cameraY = Math.floor(((pose.y[BodyIndex.Frame] as number) + animator.lookY) * BODY_SCALE);
-    this.originX = -cameraX + Math.trunc(viewport.width / 2);
-    this.originY = cameraY + Math.trunc(viewport.height / 2) - viewport.lift;
+    // The original works in whole dp. Positions stay fractional here: on dense screens a dp is
+    // several pixels, and snapping to it makes the scrolling stutter and the bike shake against
+    // the ground.
+    const cameraX = ((pose.x[BodyIndex.Frame] as number) + animator.lookX) * BODY_SCALE;
+    const cameraY = ((pose.y[BodyIndex.Frame] as number) + animator.lookY) * BODY_SCALE;
+    this.originX = -cameraX + viewport.width / 2;
+    this.originY = cameraY + viewport.height / 2 - viewport.lift;
 
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, viewport.width, viewport.height);
@@ -223,14 +226,9 @@ export class SceneRenderer {
     this.line(x1 * BODY_SCALE, y1 * BODY_SCALE, x2 * BODY_SCALE, y2 * BODY_SCALE);
   }
 
-  /** A line between two points in track space, snapped to whole dp as the original does. */
+  /** A line between two points in track space. */
   private trackLine(x1: number, y1: number, x2: number, y2: number): void {
-    this.line(
-      Math.floor(x1 * TRACK_SCALE),
-      Math.floor(y1 * TRACK_SCALE),
-      Math.floor(x2 * TRACK_SCALE),
-      Math.floor(y2 * TRACK_SCALE),
-    );
+    this.line(x1 * TRACK_SCALE, y1 * TRACK_SCALE, x2 * TRACK_SCALE, y2 * TRACK_SCALE);
   }
 
   /** An outlined circle centred on a point in dp (`GameView.drawLineWheel`). */
@@ -272,8 +270,8 @@ export class SceneRenderer {
     const frame = frames[Math.min(3, Math.floor(animator.flagPhase))] as number;
     const name = `s_flag_${kind}${frame}` as 's_flag_start0';
     const flag = this.sprites[name];
-    const px = Math.floor(x * TRACK_SCALE);
-    const py = Math.floor(y * TRACK_SCALE);
+    const px = x * TRACK_SCALE;
+    const py = y * TRACK_SCALE;
     this.setColor(0, 0, 0);
     this.line(px, py, px, py + 32);
     this.ctx.drawImage(flag.image, this.screenX(px), this.screenY(py) - 32, flag.width, flag.height);
@@ -427,14 +425,15 @@ export class SceneRenderer {
     const frontY = pose.y[1] as number;
     const rearX = pose.x[2] as number;
     const rearY = pose.y[2] as number;
-    const dp = (value: number) => Math.floor(value * BODY_SCALE);
+    const dp = (value: number) => value * BODY_SCALE;
+    const size = (value: number) => Math.floor(value * BODY_SCALE);
 
     this.setColor(0, 0, 0);
     if (dimmed) {
-      this.circle(dp(frontX), dp(frontY), dp(radius * 2));
-      this.circle(dp(frontX), dp(frontY), dp(spoke * 2));
-      this.circle(dp(rearX), dp(rearY), dp(radius * 2));
-      this.circle(dp(rearX), dp(rearY), dp(radius * 0.7 * 2));
+      this.circle(dp(frontX), dp(frontY), size(radius * 2));
+      this.circle(dp(frontX), dp(frontY), size(spoke * 2));
+      this.circle(dp(rearX), dp(rearY), size(radius * 2));
+      this.circle(dp(rearX), dp(rearY), size(radius * 0.7 * 2));
     }
 
     const drawSpokes = (x: number, y: number, angle: number) => {
@@ -465,10 +464,10 @@ export class SceneRenderer {
   /** The arc over the front wheel (`GameView._ifIIIV`). */
   private drawFrontMudguard(pose: Pose, alongX: number, alongY: number): void {
     const ctx = this.ctx;
-    const x = Math.floor((pose.x[1] as number) * BODY_SCALE);
-    const y = Math.floor((pose.y[1] as number) * BODY_SCALE);
+    const x = (pose.x[1] as number) * BODY_SCALE;
+    const y = (pose.y[1] as number) * BODY_SCALE;
     const radius = Math.floor(BODY_RADII[0] * BODY_SCALE) + 1;
-    const start = -(Math.floor(-toDegrees(angleOf(alongX, alongY))) + 170);
+    const start = toDegrees(angleOf(alongX, alongY)) - 170;
     ctx.beginPath();
     ctx.arc(this.screenX(x), this.screenY(y), radius, (start * Math.PI) / 180, ((start - 90) * Math.PI) / 180, true);
     ctx.stroke();
@@ -541,16 +540,16 @@ export class SceneRenderer {
       this.line(shoulderX, shoulderY, handX, handY);
       this.line(handX, handY, gripX, gripY);
       this.setColor(156, 0, 0);
-      this.circle(Math.floor(headX), Math.floor(headY), 8);
+      this.circle(headX, headY, 8);
     }
-    this.sprite(this.sprites.s_steering, Math.floor(gripX), Math.floor(gripY));
-    this.sprite(this.sprites.s_steering, Math.floor(pegX), Math.floor(pegY));
+    this.sprite(this.sprites.s_steering, gripX, gripY);
+    this.sprite(this.sprites.s_steering, pegX, pegY);
   }
 
   /** A body-part sprite laid along the line from one joint to the next (`GameView.drawBikerPart`). */
   private limb(sprite: Sprite, x1: number, y1: number, x2: number, y2: number, anchor: number): void {
-    const x = Math.floor(x2 * anchor + x1 * (1 - anchor));
-    const y = Math.floor(y2 * anchor + y1 * (1 - anchor));
+    const x = x2 * anchor + x1 * (1 - anchor);
+    const y = y2 * anchor + y1 * (1 - anchor);
     this.sprite(sprite, x, y, toDegrees(angleOf(x2 - x1, y2 - y1)) - 180);
   }
 
@@ -595,7 +594,7 @@ export class SceneRenderer {
     const lampY = headY + cy * 1.75 * u - ay * 0.5 * u;
 
     this.setColor(50, 50, 50);
-    this.circle(Math.floor(engineX * BODY_SCALE), Math.floor(engineY * BODY_SCALE), 4);
+    this.circle(engineX * BODY_SCALE, engineY * BODY_SCALE, 4);
     if (!pose.broken) {
       this.bodyLine(swingAX, swingAY, seatBaseX, seatBaseY);
       this.bodyLine(swingBX, swingBY, baseX, baseY);

@@ -1,6 +1,8 @@
 # Asset sources
 
-Everything under `public/assets/` is copied unchanged from the Android port of Gravity Defied
+## From the Android port
+
+Everything under `public/assets/` except `audio/` is copied unchanged from the Android port of Gravity Defied
 ([evgenyzinoviev/gravitydefied](https://github.com/evgenyzinoviev/gravitydefied), commit `ee26c95`).
 
 | Here | Original location | Notes |
@@ -20,3 +22,12 @@ areas and is not part of the picture.
 
 The original graphics and tracks belong to Codebrew Software; the remastered sprites were made for
 the Android port by its authors.
+
+## Music
+
+| Here | Source | Licence |
+|---|---|---|
+| `audio/go.ogg` | "Go" from the album *Three Red Hearts* by Abstraction (Benjamin Burnes), from the [Music Loop Bundle](https://tallbeard.itch.io/music-loop-bundle) published by Tallbeard Studios | CC0 1.0 (public domain) |
+
+The file is the original Ogg Vorbis, unmodified: it is authored to loop seamlessly, and re-encoding
+or converting it to MP3 would add a gap at the loop point.

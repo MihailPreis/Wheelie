@@ -4,7 +4,7 @@
 
 > **Status: early development.** You can already ride the 30 original tracks at https://mihailpreis.github.io/Wheelie/ with a keyboard, a gamepad or a touch screen, but there are no menus, progress or replays yet. The list below describes what is being built, not what exists today.
 
-Until the menus are in, the controls are: arrow keys or WASD to ride, `R` to restart, `[` and `]` to change track, `L` to change league.
+Until the menus are in, the controls are: arrow keys or WASD to ride, `R` to restart, `[` and `]` to change track, `L` to change league, `M` to turn the music on or off.
 
 ## What it is
 
@@ -76,6 +76,7 @@ Wheelie! exists because of other people's work:
 - **Gravity Defied — Trial Racing** was created by [Codebrew Software](http://codebrew.se) in 2004: Tors Björn Henrik Johansson, Set Elis Norman and Per David Jacobsson.
 - **The Android port** this project is based on was made by Gregory Klyushnikov and Evgeny Zinoviev.
 - **The level packs** were made by the gdtr.net community since 2007. Each pack is credited to its author in the game.
+- **The music** is "Go" from *Three Red Hearts* by [Abstraction](https://abstractionmusic.com/), released into the public domain (CC0) as part of the [Music Loop Bundle](https://tallbeard.itch.io/music-loop-bundle).
 
 ## Disclaimer
 

@@ -11,6 +11,12 @@ const BASE_VIEW_SIZE = 360;
 /** Longest stretch of real time simulated in one frame; beyond it the game slows down instead. */
 const MAX_FRAME_MILLISECONDS = 250;
 
+// Adaptive resolution: if the display cannot keep up, the canvas is rendered at fewer pixels.
+/** Frames slower than this on average count as struggling. */
+const SLOW_FRAME_MILLISECONDS = 25;
+const QUALITY_WINDOW_FRAMES = 60;
+const QUALITY_STEP = 0.75;
+
 const ticksFor = (milliseconds: number) => Math.ceil(milliseconds / TICK_MILLISECONDS);
 const CRASH_RESTART_TICKS = ticksFor(3000);
 const HARD_CRASH_RESTART_TICKS = ticksFor(1000);
@@ -92,6 +98,11 @@ export class Game {
   private previousLookX = 0;
   private previousLookY = 0;
 
+  /** Fraction of the device's pixel density the canvas is rendered at; lowered if frames run slow. */
+  private quality = 1;
+  private windowFrames = 0;
+  private windowTime = 0;
+
   private lastFrame: number | null = null;
   private pending = 0;
   private running = false;
@@ -102,7 +113,8 @@ export class Game {
     sprites: Sprites,
     private readonly input: Input,
   ) {
-    const ctx = canvas.getContext('2d');
+    // An opaque canvas is cheaper for the browser to composite.
+    const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) throw new Error('Canvas 2D is not available');
     this.ctx = ctx;
     this.renderer = new SceneRenderer(sprites);
@@ -172,8 +184,10 @@ export class Game {
 
   private readonly frame = (now: number): void => {
     if (!this.running) return;
-    const elapsed = this.lastFrame === null ? 0 : Math.min(now - this.lastFrame, MAX_FRAME_MILLISECONDS);
+    const gap = this.lastFrame === null ? 0 : now - this.lastFrame;
+    const elapsed = Math.min(gap, MAX_FRAME_MILLISECONDS);
     this.lastFrame = now;
+    if (gap > 0 && gap < MAX_FRAME_MILLISECONDS) this.watchFrameRate(gap);
     this.pending += elapsed;
     while (this.pending >= TICK_MILLISECONDS) {
       this.pending -= TICK_MILLISECONDS;
@@ -182,6 +196,34 @@ export class Game {
     this.draw(this.pending / TICK_MILLISECONDS);
     this.frameRequest = requestAnimationFrame(this.frame);
   };
+
+  /** Lowers the rendering resolution when frames have been slow for a whole window. */
+  private watchFrameRate(gap: number): void {
+    this.windowFrames++;
+    this.windowTime += gap;
+    if (this.windowFrames < QUALITY_WINDOW_FRAMES) return;
+    const average = this.windowTime / this.windowFrames;
+    this.windowFrames = 0;
+    this.windowTime = 0;
+    // Never below one canvas pixel per CSS pixel.
+    const floor = 1 / (window.devicePixelRatio || 1);
+    if (average > SLOW_FRAME_MILLISECONDS && this.quality > floor) {
+      this.quality = Math.max(floor, this.quality * QUALITY_STEP);
+    }
+  }
+
+  /** Keeps the canvas backing store matched to its size on screen, the pixel density and the quality level. */
+  private fitCanvas(): number {
+    const canvas = this.canvas;
+    const ratio = (window.devicePixelRatio || 1) * this.quality;
+    const width = Math.max(1, Math.round(canvas.clientWidth * ratio));
+    const height = Math.max(1, Math.round(canvas.clientHeight * ratio));
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    return canvas.clientWidth > 0 ? width / canvas.clientWidth : ratio;
+  }
 
   /** Advances the game by one simulation tick. Public so tests can drive it without a clock. */
   tick(): void {
@@ -237,9 +279,8 @@ export class Game {
   private draw(alpha: number): void {
     const sim = this.sim;
     if (!sim) return;
-    const canvas = this.canvas;
     const scale = this.scale;
-    const ratio = canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
+    const ratio = this.fitCanvas();
     const ctx = this.ctx;
     ctx.setTransform(ratio * scale, 0, 0, ratio * scale, 0, 0);
 

@@ -1,7 +1,7 @@
+import { Music } from './audio/music';
 import { parsePackHeader, parseTrack } from './formats/mrg';
 import { Game, type Track } from './game/game';
 import { Input } from './game/input';
-import { fitCanvas } from './render/canvas';
 import { GAME_FONT } from './render/hud';
 import { loadSprites } from './render/sprites';
 import './style.css';
@@ -9,7 +9,7 @@ import { Keypad } from './ui/keypad';
 
 // Temporary shell until the menus exist: plays the original pack straight away.
 //   ?level=0..2 &track=0.. &league=0..3   choose what to ride
-//   R restart, [ and ] previous and next track, L next league
+//   R restart, [ and ] previous and next track, L next league, M music on and off
 
 async function main(): Promise<void> {
   const canvas = document.querySelector<HTMLCanvasElement>('#game');
@@ -41,6 +41,8 @@ async function main(): Promise<void> {
   const keypad = new Keypad(input);
   document.body.append(keypad.element);
 
+  const music = new Music(`${base}assets/audio/go.ogg`);
+
   const layout = () => {
     document.documentElement.style.setProperty('--dp', String(game.scale));
     game.keypadHeight = keypad.height;
@@ -49,7 +51,8 @@ async function main(): Promise<void> {
     keypad.visible = visible;
     layout();
   };
-  fitCanvas(canvas, layout);
+  new ResizeObserver(layout).observe(canvas);
+  layout();
   input.onDeviceChange = (device) => showKeypad(device === 'touch');
   if (matchMedia('(pointer: coarse)').matches) showKeypad(true);
 
@@ -68,6 +71,7 @@ async function main(): Promise<void> {
 
   window.addEventListener('keydown', (event) => {
     if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+    music.unlock();
     if (input.keyDown(event.code)) {
       event.preventDefault();
       return;
@@ -75,6 +79,7 @@ async function main(): Promise<void> {
     if (event.code === 'KeyR') game.restart();
     else if (event.code === 'BracketLeft') step(-1);
     else if (event.code === 'BracketRight') step(1);
+    else if (event.code === 'KeyM') music.enabled = !music.enabled;
     else if (event.code === 'KeyL') {
       league = (league + 1) % 4;
       load();
@@ -82,10 +87,12 @@ async function main(): Promise<void> {
   });
   window.addEventListener('keyup', (event) => input.keyUp(event.code));
   window.addEventListener('pointerdown', (event) => {
+    music.unlock();
     if (event.pointerType === 'touch' && !keypad.visible) input.touch(event.pointerId, null);
   });
   window.addEventListener('blur', () => input.release());
   document.addEventListener('visibilitychange', () => {
+    music.setHidden(document.hidden);
     if (document.hidden) {
       input.release();
       game.stop();
