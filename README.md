@@ -2,36 +2,51 @@
 
 **An unofficial fan-made web port of Gravity Defied** — the classic 2004 trial racing game for J2ME phones, playable in the browser.
 
-> **Status: early development.** The original game is playable at https://mihailpreis.github.io/Wheelie/ — all 30 tracks, menus, unlocks, high scores and options, with a keyboard, a gamepad or a touch screen, plus close to a thousand community level packs. It installs as an app and works offline. Every run is recorded and can be watched again, saved as a file or sent as a link. A run can be exported as an image card or an animated GIF, and tracks can be drawn in a built-in editor and saved as a `levels.mrg` pack. There is a daily track, the same for everyone, and the fastest run on a track comes back as a ghost to race. The list below describes what is being built, not what exists today.
+Play it at https://mihailpreis.github.io/Wheelie/. Changes from version to version are in [CHANGELOG.md](CHANGELOG.md).
 
 ## What it is
 
 Wheelie! is a port of the [Android remaster of Gravity Defied](https://github.com/evgenyzinoviev/gravitydefied) to the web. The goal is to keep the original physics, look and feel intact, and add the things a browser makes possible.
 
-## Planned features
+## Features
 
 **The original game**
 
-- The original bike physics, ported faithfully from the Android remaster
+- The original bike physics, ported line by line from the Android remaster and checked against it
 - The original graphics, menus and screens
 - All leagues, tracks, unlocks, medals and high scores
-- Keyboard, gamepad (Xbox, DualShock, DualSense) and touch controls
+- Keyboard, gamepad (Xbox, DualShock, DualSense) and touch controls; the riding keys and buttons can be reassigned
 
 **Mods**
 
-- The community level packs from [gdtr.net](https://gdtr.net/levels/), bundled with the game
+- Close to a thousand community level packs from [gdtr.net](https://gdtr.net/levels/), bundled with the game, with search
 - Install your own `levels.mrg` file
 
 **Replays**
 
 - Every run is recorded and can be watched again
-- A replay player with seeking, pause and playback speed
+- A replay player with seeking, pause, playback speed, marks on the timeline and a display of the keys held
 - Share a replay as a file, or as a link that contains the whole replay
-- Export a result as an image card or as an animated GIF
+- Export a result as an image card with a QR code, or as an animated GIF
+- Race any replay as a ghost
+- Save all runs to one backup file; progress, high scores and achievements are worked out again from the runs when it is read
 
-**Later**
+**More**
 
-- An online track and level pack editor
+- A daily track, the same for everyone, and the tracks of the last thirty days
+- A track editor: draw a track, test-drive it, share it as a link, save a `levels.mrg` pack
+- Achievements
+- English and Russian
+- Installs as an app and works offline
+
+### Embedding a replay
+
+A replay link with `?embed=1` before the fragment shows that replay inside another page — the Share
+screen of a run copies the code:
+
+```html
+<iframe src="https://mihailpreis.github.io/Wheelie/?embed=1#r=…" width="640" height="400" style="border:0" allowfullscreen></iframe>
+```
 
 ## Tech
 
@@ -59,6 +74,13 @@ chunk files, which the game fetches only when the player opens the Mods menu. `m
 tracks the daily track is drawn from — those the game's demo rider can finish — and is regenerated
 with `pnpm mods:daily`. `pnpm mods:mirror`
 refreshes the mirror; it is run by hand and the result is committed.
+
+### Publishing
+
+Every push to `main` builds the game, deploys it to GitHub Pages and keeps the zipped build as the
+`wheelie-itch` artifact. With the repository secret `BUTLER_API_KEY` (an itch.io API key) and the
+repository variable `ITCH_TARGET` (for example `user/game:html5`) set, the same build is also pushed
+to itch.io. The version comes from `package.json`.
 
 ### Short links (optional)
 
