@@ -6,6 +6,10 @@ import { MAX_REPLAY_BYTES } from '../formats/replay';
  */
 
 const PREFIX = '#r=';
+/** A track from the editor travels the same way, as a level pack of one track. */
+const TRACK_PREFIX = '#t=';
+/** No track the editor can make comes anywhere near this. */
+const MAX_TRACK_BYTES = 64 * 1024;
 const PACKED = 'd'; // deflate-raw
 const PLAIN = 'p';
 /** Links longer than this get cut or refused by some messengers; the file is the safer way then. */
@@ -52,7 +56,15 @@ async function pipe(
   return out;
 }
 
-export async function encodeLink(baseUrl: string, replay: Uint8Array<ArrayBuffer>): Promise<string> {
+export function encodeLink(baseUrl: string, replay: Uint8Array<ArrayBuffer>): Promise<string> {
+  return encode(baseUrl, PREFIX, replay);
+}
+
+export function encodeTrackLink(baseUrl: string, pack: Uint8Array<ArrayBuffer>): Promise<string> {
+  return encode(baseUrl, TRACK_PREFIX, pack);
+}
+
+async function encode(baseUrl: string, prefix: string, replay: Uint8Array<ArrayBuffer>): Promise<string> {
   let kind = PLAIN;
   let data: Uint8Array = replay;
   if (typeof CompressionStream !== 'undefined') {
@@ -66,21 +78,37 @@ export async function encodeLink(baseUrl: string, replay: Uint8Array<ArrayBuffer
       // The plain form works everywhere.
     }
   }
-  return `${baseUrl.replace(/#.*$/, '')}${PREFIX}${kind}${toBase64Url(data)}`;
+  return `${baseUrl.replace(/#.*$/, '')}${prefix}${kind}${toBase64Url(data)}`;
 }
 
 /** Whether an address fragment claims to carry a replay. */
 export const isReplayFragment = (fragment: string) => fragment.startsWith(PREFIX);
 
 /** The replay bytes carried by an address fragment. Throws if they cannot be recovered. */
-export async function decodeFragment(fragment: string): Promise<Uint8Array> {
-  if (!isReplayFragment(fragment)) throw new Error('No replay in the address');
+export function decodeFragment(fragment: string): Promise<Uint8Array> {
+  if (!isReplayFragment(fragment)) return Promise.reject(new Error('No replay in the address'));
+  return decode(fragment, MAX_REPLAY_BYTES);
+}
+
+/** Whether an address fragment claims to carry a track. */
+export const isTrackFragment = (fragment: string) => fragment.startsWith(TRACK_PREFIX);
+
+/** The level pack carried by an address fragment. Throws if it cannot be recovered. */
+export function decodeTrackFragment(fragment: string): Promise<Uint8Array> {
+  if (!isTrackFragment(fragment)) return Promise.reject(new Error('No track in the address'));
+  return decode(fragment, MAX_TRACK_BYTES);
+}
+
+async function decode(fragment: string, limit: number): Promise<Uint8Array> {
   const kind = fragment[PREFIX.length];
   const text = fragment.slice(PREFIX.length + 1);
-  // Base64 grows data by a third; anything longer cannot be a replay within the size limit.
-  if (text.length > MAX_REPLAY_BYTES * 1.4) throw new Error('The link is too long');
+  // Base64 grows data by a third; anything longer cannot be within the size limit.
+  if (text.length > limit * 1.4) throw new Error('The link is too long');
   const data = fromBase64Url(text);
-  if (kind === PLAIN) return data;
-  if (kind === PACKED) return pipe(Uint8Array.from(data), new DecompressionStream('deflate-raw'), MAX_REPLAY_BYTES);
+  if (kind === PLAIN) {
+    if (data.length > limit) throw new Error('The link is too long');
+    return data;
+  }
+  if (kind === PACKED) return pipe(Uint8Array.from(data), new DecompressionStream('deflate-raw'), limit);
   throw new Error('Unknown link format');
 }

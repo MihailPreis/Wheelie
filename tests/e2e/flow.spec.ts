@@ -338,7 +338,8 @@ test('a run shared as a link opens as a replay in a fresh browser', async ({ pag
   await other.close();
 });
 
-test('a track is made in the editor, test-driven and played as a pack', async ({ page }) => {
+test('a track is made in the editor, test-driven and played as a pack', async ({ page, context, browser }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   const editor = page.locator('.editor');
   const canvas = page.locator('.editor-canvas');
   const click = (label: string | RegExp) => page.locator('.menu-label', { hasText: label }).first().click();
@@ -375,26 +376,53 @@ test('a track is made in the editor, test-driven and played as a pack', async ({
 
   // The draft was saved as it was edited.
   await button('Done').click();
-  await expect(items(page).nth(2)).toHaveText('Bumpy road');
+  await expect(items(page).nth(4)).toHaveText('Bumpy road - Easy');
   await page.reload();
   await page.keyboard.press('Enter');
   await expect(title(page)).toHaveText('Main', { timeout: 10_000 });
   await click('Editor');
   await click('Bumpy road');
   await expect(texts(page).nth(1)).toHaveText('14 points');
+
+  // The track travels as a link: whoever opens it can ride it or take it into their own editor.
+  await click('Copy link');
+  await expect(texts(page).nth(2)).toContainText('Link copied');
+  const link = await page.evaluate(() => navigator.clipboard.readText());
+  expect(link).toMatch(/#t=[dp][A-Za-z0-9_-]+$/);
+  const visitor = await (await browser.newContext()).newPage();
+  await visitor.goto(link);
+  await visitor.keyboard.press('Enter');
+  await expect(visitor.locator('.menu-title')).toHaveText('Shared track', { timeout: 10_000 });
+  await expect(visitor.locator('.menu-text').first()).toHaveText('Bumpy road');
+  await pick(visitor, 'Open in the editor');
+  await expect(visitor.locator('.menu-label', { hasText: 'Bumpy road - Easy' })).toBeVisible();
+  await visitor.close();
+
+  // It is moved to the medium level of the pack.
+  await click(/^Level/);
+  await click('Medium');
+  await expect(page.locator('.menu-value')).toHaveText('Medium');
   await press(page, 'Escape');
+  await expect(items(page).nth(4)).toHaveText('Bumpy road - Medium');
 
   // The drafts download as a pack the original game reads…
   const [download] = await Promise.all([page.waitForEvent('download'), click('Save levels.mrg')]);
   expect(download.suggestedFilename()).toBe('levels.mrg');
   const pack = readFileSync(await download.path());
-  expect(pack.readInt32BE(0)).toBe(1);
-  expect(pack.subarray(8, 18).toString('latin1')).toBe('Bumpy_road');
+  expect([pack.readInt32BE(0), pack.readInt32BE(4)]).toEqual([0, 1]);
+  expect(pack.subarray(12, 22).toString('latin1')).toBe('Bumpy_road');
 
   // …and can be played here as a pack of their own.
   await click('Play my tracks');
   await expect(title(page)).toHaveText('Play');
+  await press(page, 'ArrowDown', 'ArrowRight');
   await expect(page.locator('.menu-item', { hasText: 'Track' }).locator('.menu-value')).toHaveText('Bumpy road');
+
+  // A whole pack comes into the editor at once.
+  await click('Go to Main');
+  await click('Editor');
+  await click(/^Copy all of/);
+  await expect(texts(page).first()).toHaveText('1 tracks taken.');
 });
 
 test('the fastest run on a track comes back as a ghost', async ({ page }) => {

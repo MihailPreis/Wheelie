@@ -1,3 +1,4 @@
+import type { PadAction } from '../game/gamepad-nav';
 import { GAME_FONT } from '../render/hud';
 import { STRINGS as S } from '../ui/strings';
 import {
@@ -287,12 +288,16 @@ export class Editor {
 
   /** What is under a pointer, the nearest thing first. */
   private handleAt(sx: number, sy: number): Handle | null {
+    return this.nearest(sx, sy, GRAB);
+  }
+
+  private nearest(sx: number, sy: number, reach: number): Handle | null {
     const track = this.track;
     if (!track) return null;
     const handles: Handle[] = [{ kind: 'start' }, { kind: 'finish' }];
     for (let index = 0; index < track.points.length; index++) handles.push({ kind: 'point', index });
     let best: Handle | null = null;
-    let nearest = GRAB;
+    let nearest = reach;
     for (const handle of handles) {
       const [x, y] = this.toScreen(...this.position(handle));
       const distance = Math.hypot(x - sx, y - sy);
@@ -462,6 +467,60 @@ export class Editor {
       default:
         return false;
     }
+  }
+
+  /** The same from a gamepad: the stick moves, the buttons pick up, add, delete and zoom. */
+  pad(action: PadAction): void {
+    const track = this.track;
+    if (!track) return;
+    const key = (name: string, shiftKey = false) =>
+      this.key({ key: name, shiftKey, ctrlKey: false, metaKey: false } as KeyboardEvent);
+    switch (action) {
+      case 'up':
+        key('ArrowUp', true);
+        break;
+      case 'down':
+        key('ArrowDown', true);
+        break;
+      case 'left':
+        key('ArrowLeft', true);
+        break;
+      case 'right':
+        key('ArrowRight', true);
+        break;
+      case 'fire': {
+        // Picks up whatever is nearest the middle of the view, or puts down what is held.
+        if (this.selected) this.selected = null;
+        else this.selected = this.nearest(this.canvas.clientWidth / 2, this.canvas.clientHeight / 2, Infinity);
+        this.refresh();
+        break;
+      }
+      case 'previous':
+        key('Tab', true);
+        break;
+      case 'next':
+        key('Tab');
+        break;
+      case 'add':
+        this.addAt(this.canvas.clientWidth / 2, this.canvas.clientHeight / 2);
+        break;
+      case 'remove':
+        this.removeSelected();
+        break;
+      case 'zoomIn':
+        key('+');
+        break;
+      case 'zoomOut':
+        key('-');
+        break;
+      case 'pause':
+        this.onTest?.(cloneTrack(track));
+        break;
+      case 'back':
+        key('Escape');
+        break;
+    }
+    this.say(S.editorPadHint);
   }
 
   // ---- drawing ------------------------------------------------------------------------------

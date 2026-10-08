@@ -5,6 +5,8 @@ import { type EditorTrack, isEditorTrack } from './model';
 export interface Draft {
   id: string;
   track: EditorTrack;
+  /** The level of the pack the track goes into, 0 to 2; the first if absent. */
+  level?: number;
   /** Milliseconds since the Unix epoch. */
   modified: number;
 }
@@ -29,10 +31,10 @@ export class Drafts {
     return (await this.table.all()).sort((a, b) => (a.id < b.id ? -1 : 1));
   }
 
-  async create(track: EditorTrack): Promise<Draft> {
+  async create(track: EditorTrack, level = 0): Promise<Draft> {
     // The time first, so that sorting by identifier is sorting by age.
     const id = `${Date.now().toString(36).padStart(9, '0')}-${(this.counter++).toString(36)}`;
-    const draft = { id, track, modified: Date.now() };
+    const draft = { id, track, level, modified: Date.now() };
     await this.table.put(draft);
     return draft;
   }

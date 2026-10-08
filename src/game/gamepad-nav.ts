@@ -1,22 +1,34 @@
 /** Menu navigation from a gamepad. Gamepads have no events, so this is polled once a frame. */
 
-export type PadAction = 'up' | 'down' | 'left' | 'right' | 'fire' | 'back' | 'pause';
+export type MenuPadAction = 'up' | 'down' | 'left' | 'right' | 'fire' | 'back' | 'pause';
+/** The second group is of use only where there is more to do than walk a menu, as in the editor. */
+export type PadAction = MenuPadAction | 'add' | 'remove' | 'previous' | 'next' | 'zoomIn' | 'zoomOut';
+
+const MENU_ACTIONS = new Set<PadAction>(['up', 'down', 'left', 'right', 'fire', 'back', 'pause']);
+export const isMenuAction = (action: PadAction): action is MenuPadAction => MENU_ACTIONS.has(action);
 
 const STICK_THRESHOLD = 0.5;
 const REPEAT_DELAY = 350;
 const REPEAT_INTERVAL = 120;
 
-// Standard mapping: 0 bottom face button, 1 right face button, 9 start, 12–15 d-pad.
+// Standard mapping: 0–3 face buttons (bottom, right, left, top), 4–5 bumpers, 6–7 triggers,
+// 9 start, 12–15 d-pad.
 const BUTTONS: readonly (readonly [number, PadAction])[] = [
   [0, 'fire'],
   [1, 'back'],
+  [2, 'add'],
+  [3, 'remove'],
+  [4, 'previous'],
+  [5, 'next'],
+  [6, 'zoomOut'],
+  [7, 'zoomIn'],
   [9, 'pause'],
   [12, 'up'],
   [13, 'down'],
   [14, 'left'],
   [15, 'right'],
 ];
-const REPEATING = new Set<PadAction>(['up', 'down', 'left', 'right']);
+const REPEATING = new Set<PadAction>(['up', 'down', 'left', 'right', 'previous', 'next', 'zoomIn', 'zoomOut']);
 
 export class GamepadNavigator {
   /** When each held action fires next. */

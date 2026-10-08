@@ -17,7 +17,7 @@ import { type EditorTrack, toTrackData } from './editor/model';
 import { EditorScreens } from './editor/screens';
 import { decodeReplay, encodeReplay, hashTrack, MAX_REPLAY_BYTES, Outcome, type Replay } from './formats/replay';
 import type { Game, RecordedRun, RunResult, Track } from './game/game';
-import { GamepadNavigator } from './game/gamepad-nav';
+import { GamepadNavigator, isMenuAction } from './game/gamepad-nav';
 import {
   addScore,
   clearScores,
@@ -49,7 +49,7 @@ import { ModsScreens, type ScreenBuilder } from './mods/screens';
 import type { PlayerControls, TimelineMark } from './player/controls';
 import type { Sprites } from './render/sprites';
 import { ReplayScreens } from './replay/screens';
-import { decodeFragment, isReplayFragment } from './replay/share';
+import { decodeFragment, decodeTrackFragment, isReplayFragment } from './replay/share';
 import { verifyReplay } from './replay/simulate';
 import type { ReplayStore, StoredReplay } from './replay/store';
 import { removeAll, writeJson } from './storage/store';
@@ -158,9 +158,9 @@ export class App {
   ) {
     this.runPack = pack;
     this.baseUrl = baseUrl;
+    this.library = library;
     this.trackCounts = pack.levels.map((level) => level.length);
-    this.progress = loadProgress(pack.id, this.trackCounts);
-    if (isCheatName(this.settings.name)) unlockEverything(this.progress, this.trackCounts);
+    this.progress = this.loadProgress(pack);
     this.applySettings();
     this.mods = new ModsScreens(
       {
@@ -222,6 +222,8 @@ export class App {
         alert: (title, text, then) => this.alert(title, text, then),
         parent: this.mainMenu,
         selectedTrack: () => this.trackAt(this.progress.selectedLevel, this.selectedTrack) ?? null,
+        activePack: () => this.pack,
+        shareBaseUrl,
         edit: (draft, back) => {
           this.menu.hide();
           this.current = null;
@@ -285,10 +287,24 @@ export class App {
   private usePack(pack: Pack): void {
     this.pack = pack;
     this.trackCounts = pack.levels.map((level) => level.length);
-    this.progress = loadProgress(pack.id, this.trackCounts);
-    if (isCheatName(this.settings.name)) unlockEverything(this.progress, this.trackCounts);
+    this.progress = this.loadProgress(pack);
     writeJson(ACTIVE_PACK_KEY, pack.id);
     this.showFrontMenu(this.playMenu);
+  }
+
+  /**
+   * The player's progress in a pack. Their own tracks are all open from the start: the levels
+   * of such a pack may be empty, and an empty level can never be completed to unlock the next.
+   */
+  private loadProgress(pack: Pack): Progress {
+    const counts = pack.levels.map((level) => level.length);
+    const progress = loadProgress(pack.id, counts);
+    if (isCheatName(this.settings.name) || pack.id.startsWith('file-')) {
+      const league = progress.unlockedLeagues;
+      unlockEverything(progress, counts);
+      if (!isCheatName(this.settings.name)) progress.unlockedLeagues = Math.max(league, 2);
+    }
+    return progress;
   }
 
   private saveProgress(): void {
@@ -347,12 +363,13 @@ export class App {
 
   private readonly pollGamepad = (now: number): void => {
     for (const action of this.padNavigator.poll(now)) {
-      if (this.watching) {
-        this.controls.pad(action);
+      if (this.editor.visible && !this.watching) {
+        this.editor.pad(action);
         continue;
       }
-      if (this.editor.visible) {
-        if (action === 'back') this.editor.onClose?.();
+      if (!isMenuAction(action)) continue;
+      if (this.watching) {
+        this.controls.pad(action);
         continue;
       }
       if (action === 'pause') {
@@ -429,6 +446,7 @@ export class App {
 
   private launching = false;
   private readonly baseUrl: string;
+  private readonly library: Library;
 
   /** The player's own fastest finish on a track and league, as a ghost to beat. */
   private async bestRun(
@@ -916,6 +934,56 @@ export class App {
     } catch {
       this.alert(S.myRuns, S.replayDamaged, () => this.open(this.mainMenu));
     }
+  }
+
+  /**
+   * Opens the track carried by a link's fragment: a level pack of one track, which can be ridden
+   * as it is or taken into the editor.
+   */
+  async openTrackLink(fragment: string): Promise<void> {
+    const back = () => this.open(this.mainMenu);
+    let bytes: Uint8Array;
+    let pack: Pack;
+    try {
+      bytes = await decodeTrackFragment(fragment);
+      // The identifier follows from the contents, so the same link always means the same pack.
+      const hash = bytes.reduce((sum, byte) => Math.imul(sum ^ byte, 0x01000193) >>> 0, 0x811c9dc5);
+      pack = buildPack(`file-shared-${hash.toString(16)}`, S.sharedTrack, '', bytes);
+    } catch {
+      this.alert(S.editor, S.damagedPack, back);
+      return;
+    }
+    const track = pack.levels.flat()[0];
+    if (!track) {
+      this.alert(S.editor, S.damagedPack, back);
+      return;
+    }
+    this.open(() => ({
+      title: S.sharedTrack,
+      back,
+      items: [
+        { kind: 'text', html: escapeHtml(track.name), big: true },
+        { kind: 'text', html: S.editorPoints(track.data.pointCount) },
+        { kind: 'space', size: 10 },
+        {
+          kind: 'action',
+          label: S.play,
+          run: () =>
+            void this.library
+              .put({ id: pack.id, name: `${S.sharedTrack}: ${track.name}`, author: '', bytes, installed: Date.now() })
+              .then(() => this.usePack(pack)),
+        },
+        {
+          kind: 'action',
+          label: S.editorOpenIn,
+          run: () =>
+            void this.editorScreens.adopt(track.name, track.data).then((taken) => {
+              if (!taken) this.alert(S.editor, S.editorCannotCopy, back);
+            }),
+        },
+        { kind: 'action', label: S.back, run: back },
+      ],
+    }));
   }
 
   /** A file was dropped on the page: a replay is played, anything else is taken for a level pack. */

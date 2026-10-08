@@ -12,7 +12,7 @@ import { buildPack, ORIGINAL_PACK_ID, type Pack } from './mods/pack';
 import { PlayerControls } from './player/controls';
 import { GAME_FONT } from './render/hud';
 import { loadSprites } from './render/sprites';
-import { isReplayFragment } from './replay/share';
+import { isReplayFragment, isTrackFragment } from './replay/share';
 import { ReplayStore } from './replay/store';
 import { readJson } from './storage/store';
 import './style.css';
@@ -252,9 +252,10 @@ async function main(): Promise<void> {
   // A link to a replay opens straight into it; the replay is then kept, so the address is cleaned.
   const openLink = () => {
     const fragment = location.hash;
-    if (!isReplayFragment(fragment)) return;
+    if (!isReplayFragment(fragment) && !isTrackFragment(fragment)) return;
     history.replaceState(null, '', location.pathname + location.search);
-    void app.openLink(fragment);
+    if (isTrackFragment(fragment)) void app.openTrackLink(fragment);
+    else void app.openLink(fragment);
   };
   window.addEventListener('hashchange', openLink);
   openLink();

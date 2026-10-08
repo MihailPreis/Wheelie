@@ -285,6 +285,16 @@ Source code, under the GNU GPL v2:<br>github.com/MihailPreis/Wheelie`,
   gifSize: 'GIF size',
   gifPart: 'GIF shows',
   gifParts: ['Whole run', 'First 10 s', 'Last 10 s'] as readonly string[],
+  editorCopyPack: (name: string) => `Copy all of "${name}"`,
+  editorImportFile: 'Import levels.mrg',
+  editorImported: (taken: number, skipped: number) =>
+    skipped > 0
+      ? `${taken} tracks taken, ${skipped} left out: too large, too small or too many.`
+      : `${taken} tracks taken.`,
+  editorOpenIn: 'Open in the editor',
+  editorPadHint:
+    'Stick moves. A picks up or puts down, X adds a point, Y deletes, bumpers step along the points, triggers zoom, Start tests, B leaves.',
+  sharedTrack: 'Shared track',
 
   crashed: 'Crashed',
   wheelie: 'Wheelie!',

@@ -260,6 +260,16 @@ export const RU: Strings = {
   gifSize: 'Размер GIF',
   gifPart: 'В GIF попадёт',
   gifParts: ['Весь заезд', 'Первые 10 с', 'Последние 10 с'],
+  editorCopyPack: (name) => `Скопировать весь «${name}»`,
+  editorImportFile: 'Импорт levels.mrg',
+  editorImported: (taken, skipped) =>
+    skipped > 0
+      ? `Взято трасс: ${taken}, пропущено: ${skipped} (слишком большие, слишком маленькие или лишние).`
+      : `Взято трасс: ${taken}.`,
+  editorOpenIn: 'Открыть в редакторе',
+  editorPadHint:
+    'Стик двигает. A — взять или отпустить, X — добавить точку, Y — удалить, бамперы — по точкам, триггеры — масштаб, Start — тест, B — выход.',
+  sharedTrack: 'Трасса по ссылке',
 
   crashed: 'Авария',
   wheelie: 'Wheelie!',
