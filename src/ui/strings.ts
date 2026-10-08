@@ -18,6 +18,49 @@ const EN = {
   main: 'Main',
   mods: 'Mods',
   myRuns: 'My runs',
+  achievements: 'Achievements',
+  achievementEarned: (title: string) => `Achievement: ${title}`,
+  achievementHidden: '???',
+  achievementCount: (earned: number, total: number) => `${earned} of ${total} earned.`,
+  /** Title and description of each achievement. */
+  achievementList: {
+    wheelie: ['Back wheel only', 'Finish a track without the front wheel touching the ground.'],
+    noBrake: ['Who needs brakes', 'Finish a track without braking.'],
+    fullThrottle: ['Pinned', 'Finish a medium, hard or daily track without letting go of the throttle.'],
+    noLean: ['Stiff back', 'Finish a medium, hard or daily track without leaning.'],
+    flip: ['Over the top', 'Turn the bike right over and still finish.'],
+    beatGhost: ['Ghostbuster', 'Finish ahead of the ghost.'],
+    photoFinish: ['Photo finish', 'Beat the ghost by a tenth of a second or less.'],
+    easyDone: ['Warmed up', 'Complete every easy track.'],
+    mediumDone: ['Getting serious', 'Complete every medium track.'],
+    hardDone: ['Gravity defied', 'Complete every hard track.'],
+    league325: ['The big one', 'Unlock the 325cc league.'],
+    daily3: ['Regular', 'Finish the daily track three days in a row.'],
+    daily7: ['A whole week', 'Finish the daily track seven days in a row.'],
+    runs100: ['Hundred starts', 'Make a hundred runs.'],
+    ownTrack: ['Home ground', 'Finish a track you made in the editor.'],
+    shared: ['Look at this', 'Share one of your runs.'],
+    instantCrash: ['That was quick', 'Crash within the first second.'],
+  } as Record<
+    | 'wheelie'
+    | 'noBrake'
+    | 'fullThrottle'
+    | 'noLean'
+    | 'flip'
+    | 'beatGhost'
+    | 'photoFinish'
+    | 'easyDone'
+    | 'mediumDone'
+    | 'hardDone'
+    | 'league325'
+    | 'daily3'
+    | 'daily7'
+    | 'runs100'
+    | 'ownTrack'
+    | 'shared'
+    | 'instantCrash',
+    readonly [title: string, text: string]
+  >,
   fullscreenEnter: 'Full screen (F)',
   fullscreenLeave: 'Leave full screen (F)',
   daily: 'Daily track',

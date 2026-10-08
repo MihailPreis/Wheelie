@@ -1,0 +1,35 @@
+.toasts {
+  position: fixed;
+  top: calc(var(--dp) * 48px + env(safe-area-inset-top, 0px));
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--dp) * 6px);
+  pointer-events: none;
+}
+
+/* The green of the track, as the progress bar: something has been reached. */
+.toast {
+  max-width: 90%;
+  padding: calc(var(--dp) * 6px) calc(var(--dp) * 14px);
+  background: #29aa27;
+  color: #fff;
+  font-size: calc(var(--dp) * 16px);
+  text-align: center;
+  animation: toast-in 0.25s ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--dp) * -8px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}

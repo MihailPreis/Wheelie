@@ -20,6 +20,8 @@ export interface ReplaysHost {
   watch(replay: StoredReplay, back: ScreenBuilder): void;
   /** Starts the track of a run with that run as the ghost. */
   race(replay: StoredReplay, back: ScreenBuilder): void;
+  /** One of the player's runs has been sent somewhere. */
+  shared(): void;
   /** Takes in a replay file from outside. */
   importReplay(bytes: Uint8Array): void;
   /** Address that replay links are built on. */
@@ -194,6 +196,7 @@ export class ReplayScreens {
             void link()
               .then(async (url) => {
                 await navigator.clipboard.writeText(url);
+                this.host.shared();
                 say(S.linkCopied(url.length) + (url.length > COMFORTABLE_LINK_LENGTH ? ` ${S.linkLong}` : ''));
               })
               .catch(() => say(S.linkNotCopied)),
@@ -229,6 +232,7 @@ export class ReplayScreens {
             if (typeof blob === 'string') return say(blob);
             if (!copy) {
               download(blob, `${fileName(replay)}.png`);
+              this.host.shared();
               return say(S.imageSaved);
             }
             await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
@@ -337,6 +341,7 @@ export class ReplayScreens {
         onProgress: (done) => say(S.gifRendering(Math.round(done * 100))),
       });
       download(blob, `${fileName(replay)}.gif`);
+      this.host.shared();
       say(S.gifSaved((blob.size / 1024 / 1024).toFixed(1)));
     } catch (error) {
       // Leaving the screen cancels the rendering; there is nobody left to tell.

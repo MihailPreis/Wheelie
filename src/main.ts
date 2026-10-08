@@ -20,6 +20,7 @@ import { createFullscreenButton, toggleFullscreen } from './ui/fullscreen';
 import { Keypad } from './ui/keypad';
 import { MenuView } from './ui/menu/view';
 import { currentLanguage, STRINGS } from './ui/strings';
+import { Toasts } from './ui/toast';
 
 /** How long each of the two opening screens stays up, in milliseconds. */
 const SPLASH_MILLISECONDS = 1200;
@@ -132,6 +133,7 @@ async function main(): Promise<void> {
   const replayStore = new ReplayStore();
   const controls = new PlayerControls(game);
   const editor = new Editor();
+  const toasts = new Toasts();
   const drafts = new Drafts();
   const output = new AudioOutput();
   const music = new Music(output, `${base}assets/audio/go.ogg`);
@@ -153,6 +155,7 @@ async function main(): Promise<void> {
     createFullscreenButton(),
     controls.element,
     editor.element,
+    toasts.element,
   );
 
   const layout = () => {
@@ -181,6 +184,7 @@ async function main(): Promise<void> {
     menuButton,
     controls,
     editor,
+    toasts,
     drafts,
     layout,
     () => {

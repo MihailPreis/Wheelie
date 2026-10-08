@@ -37,6 +37,7 @@ test('main menu leads to every section and back', async ({ page }) => {
     'Daily track',
     'Mods',
     'My runs',
+    'Achievements',
     'Editor',
     'Options',
     'Help',
@@ -445,4 +446,33 @@ test('a browser set to Russian gets the game in Russian', async ({ browser }) =>
   await page.keyboard.press('Enter');
   await expect(title(page)).toHaveText('Главное меню', { timeout: 10_000 });
   await context.close();
+});
+
+test('achievements are secret until earned, and are announced at the end of the run', async ({ page }) => {
+  await pick(page, 'Achievements');
+  await expect(texts(page).first()).toHaveText('0 of 17 earned.');
+  await expect(page.locator('.menu-text', { hasText: '???' })).toHaveCount(17);
+  await press(page, 'Escape');
+
+  // Full throttle to the finish of the first track: no brakes were used.
+  await pick(page, 'Play Menu');
+  await pick(page, 'Start');
+  await expect(page.locator('.menu')).toBeHidden();
+  await page.keyboard.down('ArrowUp');
+  await expect(title(page)).toHaveText('Finished!', { timeout: 20_000 });
+  await page.keyboard.up('ArrowUp');
+  await expect(page.locator('.toast')).toHaveText('Achievement: Who needs brakes');
+  await pick(page, 'Ok');
+  await expect(page.locator('.menu-text', { hasText: 'Achievement: Who needs brakes' })).toContainText(
+    'Finish a track without braking.',
+  );
+
+  await pick(page, 'Play Menu');
+  await pick(page, 'Go to Main');
+  await pick(page, 'Achievements');
+  await expect(texts(page).first()).toHaveText('1 of 17 earned.');
+  await expect(page.locator('.menu-text', { hasText: '???' })).toHaveCount(16);
+  await expect(page.locator('.menu-text', { hasText: 'Who needs brakes' })).toContainText(
+    'Finish a track without braking.',
+  );
 });

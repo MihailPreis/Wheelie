@@ -1,3 +1,12 @@
+import {
+  ACHIEVEMENTS,
+  type AchievementId,
+  award,
+  countRun,
+  earnedAchievements,
+  runAchievements,
+} from './achievements/achievements';
+import { analyseRun } from './achievements/analyse';
 import type { Music } from './audio/music';
 import type { Sound } from './audio/sound';
 import { PHYSICS_VERSION } from './core/version';
@@ -47,6 +56,7 @@ import { removeAll, writeJson } from './storage/store';
 import type { Keypad } from './ui/keypad';
 import type { MenuItem, MenuKey, MenuView } from './ui/menu/view';
 import { chooseLanguage, currentLanguage, LANGUAGE_NAMES, LANGUAGES, STRINGS as S } from './ui/strings';
+import type { Toasts } from './ui/toast';
 
 /** Smaller side of the picture, in pixels, for each value of the Screen option. */
 const CLASSIC_SCREENS = [0, 240, 176];
@@ -138,6 +148,7 @@ export class App {
     private readonly menuButton: HTMLElement,
     private readonly controls: PlayerControls,
     private readonly editor: Editor,
+    private readonly toasts: Toasts,
     drafts: Drafts,
     private readonly onLayout: () => void,
     private readonly onReset: () => void,
@@ -172,6 +183,7 @@ export class App {
         watch: (replay, back) => void this.watch(replay, back),
         race: (replay, back) => void this.race(replay, back),
         importReplay: (bytes) => void this.importReplay(bytes),
+        shared: () => this.earn(['shared']),
         shareBaseUrl,
         shortLinkApi,
         sprites,
@@ -415,7 +427,7 @@ export class App {
     track: number,
     league: number,
     data: Track,
-  ): Promise<Uint8Array | null> {
+  ): Promise<Replay | null> {
     const hash = hashTrack(data.data);
     let best: Replay | null = null;
     for (const stored of await this.replayStore.list()) {
@@ -437,17 +449,18 @@ export class App {
         // Not a ghost, then.
       }
     }
-    return best?.inputs ?? null;
+    return best;
   }
 
   private async launch(level: number, track: number, rival: Replay | null): Promise<void> {
     const data = this.trackAt(level, track);
     if (!data) return;
     const league = rival?.league ?? this.progress.selectedLeague;
-    const ghost =
-      rival?.inputs ?? (this.settings.ghost ? await this.bestRun(this.pack.id, level, track, league, data) : null);
+    const ghost = rival ?? (this.settings.ghost ? await this.bestRun(this.pack.id, level, track, league, data) : null);
     try {
-      this.game.load(data, league, false, ghost);
+      this.game.load(data, league, false, ghost?.inputs ?? null);
+      this.ghostTime = ghost?.time ?? null;
+      this.fresh = [];
     } catch {
       // Some community packs contain a track that cannot be loaded. It counts as passed, or the
       // tracks behind it could never be unlocked.
@@ -497,6 +510,20 @@ export class App {
   private recordRun(run: RecordedRun): void {
     if (this.testing) return;
     const track = this.runPack.levels[this.level]?.[this.track];
+    // Achievements are judged on the original tracks and the daily one: anywhere else a track
+    // could be made to order for them.
+    if (track && (this.ridingDaily || this.runPack.id === ORIGINAL_PACK_ID)) {
+      const facts = analyseRun(track.data, this.game.league, run.inputs);
+      const earned = runAchievements(facts, {
+        level: this.level,
+        daily: this.ridingDaily,
+        wheelie: run.wheelie,
+        time: run.time,
+        ghostTime: this.ghostTime,
+      });
+      if (countRun() >= 100) earned.push('runs100');
+      this.earn(earned);
+    }
     // A run given up within the first seconds is not worth a place in the list.
     if (!track || (run.outcome !== Outcome.Finished && run.inputs.length < MIN_UNFINISHED_TICKS)) return;
     const date = Date.now();
@@ -538,6 +565,52 @@ export class App {
       time: replay.time,
     });
   }
+
+  // ---- achievements ------------------------------------------------------------------------
+
+  /** Finish time of the ghost being raced, in milliseconds. */
+  private ghostTime: number | null = null;
+
+  /** Awards achievements and announces the ones that are new. */
+  private earn(ids: readonly AchievementId[]): void {
+    for (const id of award(ids, Date.now())) {
+      this.fresh.push(id);
+      this.toasts.show(S.achievementEarned(S.achievementList[id][0]));
+    }
+  }
+
+  /** Achievements earned since the run in progress began, for the screen at its end. */
+  private fresh: AchievementId[] = [];
+
+  private freshItems(): MenuItem[] {
+    return this.fresh.map((id) => ({
+      kind: 'text',
+      html: `<b>${escapeHtml(S.achievementEarned(S.achievementList[id][0]))}</b><br>${escapeHtml(S.achievementList[id][1])}`,
+    }));
+  }
+
+  /** Every achievement is a secret until it is earned. */
+  private readonly achievementsScreen: ScreenBuilder = () => {
+    const back = () => this.open(this.mainMenu);
+    const earned = earnedAchievements();
+    const count = ACHIEVEMENTS.filter((id) => earned[id] !== undefined).length;
+    const items: MenuItem[] = [{ kind: 'text', html: S.achievementCount(count, ACHIEVEMENTS.length) }];
+    for (const id of ACHIEVEMENTS) {
+      const when = earned[id];
+      if (when === undefined) {
+        items.push({ kind: 'text', html: `<span class="menu-dim">${S.achievementHidden}</span>` });
+        continue;
+      }
+      const [title, text] = S.achievementList[id];
+      const date = new Date(when).toLocaleDateString(S.locale, { day: 'numeric', month: 'short', year: 'numeric' });
+      items.push({
+        kind: 'text',
+        html: `<b>${escapeHtml(title)}</b><br>${escapeHtml(text)}<br><span class="menu-dim">${escapeHtml(date)}</span>`,
+      });
+    }
+    items.push({ kind: 'action', label: S.back, run: back });
+    return { title: S.achievements, back, text: true, items };
+  };
 
   // ---- the daily track ---------------------------------------------------------------------
 
@@ -598,7 +671,9 @@ export class App {
       const ghost = this.settings.ghost
         ? await this.bestRun(daily.pack.id, daily.level, daily.track, daily.league, track)
         : null;
-      this.game.load(track, daily.league, false, ghost);
+      this.game.load(track, daily.league, false, ghost?.inputs ?? null);
+      this.ghostTime = ghost?.time ?? null;
+      this.fresh = [];
     } catch {
       this.alert(S.daily, S.damagedTrack, () => this.open(this.dailyScreen));
       return;
@@ -634,6 +709,8 @@ export class App {
     const daily = this.daily;
     if (!daily) return;
     const improved = recordDaily(daily.day, result.time);
+    const streak = dailyStreak(daily.day);
+    this.earn([...(streak >= 3 ? (['daily3'] as const) : []), ...(streak >= 7 ? (['daily7'] as const) : [])]);
     const best = dailyBest(daily.day) ?? result.time;
     const screen: ScreenBuilder = () => ({
       title: S.finished,
@@ -642,6 +719,7 @@ export class App {
         { kind: 'text', html: formatScoreTime(Math.floor(result.time / 10)), big: true },
         { kind: 'text', html: improved ? S.dailyNewBest : `${S.dailyBest}: ${formatScoreTime(Math.floor(best / 10))}` },
         { kind: 'text', html: `${S.dailyStreak}: ${S.dailyDays(dailyStreak(daily.day))}` },
+        ...this.freshItems(),
         { kind: 'space', size: 10 },
         { kind: 'action', label: S.restart, run: () => void this.playDaily() },
         {
@@ -874,6 +952,7 @@ export class App {
       return;
     }
     if (this.testing) {
+      this.earn(['ownTrack']);
       this.stopTest(S.editorTestFinished(formatScoreTime(Math.floor(result.time / 10))));
       return;
     }
@@ -928,6 +1007,16 @@ export class App {
     const leagues = availableLeagues(this.progress);
     const outcome = completeTrack(this.progress, level, track, this.trackCounts);
     this.saveProgress();
+    if (this.pack.id === ORIGINAL_PACK_ID) {
+      const done = (index: number) =>
+        completedCount(this.progress, index, this.trackCounts) >= (this.trackCounts[index] ?? 0);
+      const earned: AchievementId[] = [];
+      if (done(0)) earned.push('easyDone');
+      if (done(1)) earned.push('mediumDone');
+      if (done(2)) earned.push('hardDone');
+      if (this.progress.unlockedLeagues >= 3) earned.push('league325');
+      this.earn(earned);
+    }
 
     const items: MenuItem[] = [{ kind: 'text', html: `<b>${S.time}</b>: ${formatScoreTime(time)}` }];
     (scores[league] ?? []).forEach((score, place) => {
@@ -941,6 +1030,8 @@ export class App {
         LEVEL_NAMES[level] ?? '',
       ),
     });
+
+    items.push(...this.freshItems());
 
     const unlocked = outcome.leagueUnlocked;
     if (unlocked !== null) {
@@ -1005,6 +1096,7 @@ export class App {
       { kind: 'action', label: S.daily, run: () => void this.openDaily() },
       { kind: 'action', label: S.mods, run: () => this.open(this.mods.menu) },
       { kind: 'action', label: S.myRuns, run: () => void this.replays.openList() },
+      this.link(S.achievements, this.achievementsScreen),
       { kind: 'action', label: S.editor, run: () => void this.editorScreens.openList() },
       this.link(S.options, this.optionsMenu(this.mainMenu)),
       this.link(S.help, this.helpMenu(this.mainMenu)),
