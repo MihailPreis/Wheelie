@@ -1,5 +1,5 @@
 import type { DualSense } from '../game/dualsense';
-import { engineLoop } from './engine-sample';
+import { engineLoop, engineSustain } from './engine-sample';
 import type { AudioOutput } from './output';
 
 // The original game was silent, so everything here is new: an engine and a few effects, all
@@ -27,6 +27,8 @@ interface Engine {
 
 export class Sound {
   enabled = true;
+  /** Speaker level only: engine haptics keep their independent amplitude. */
+  volume = 100;
   private engineNodes: Engine | null = null;
   private noise: AudioBuffer | null = null;
 
@@ -45,11 +47,11 @@ export class Sound {
       .then(async (response) => {
         if (!response.ok) throw new Error('Engine recording unavailable');
         const recording = await context.decodeAudioData(await response.arrayBuffer());
-        // The supplied 48.7-second recording: steady idle and the strongest sustained rev.
+        // Separate steady textures; throttle controls their pitch rather than replaying a rev-up.
         const idle = context.createBufferSource();
         idle.buffer = engineLoop(context, recording, 12, 15.8);
         const load = context.createBufferSource();
-        load.buffer = engineLoop(context, recording, 23.8, 25.3, 0.25);
+        load.buffer = engineSustain(context, recording);
         const idleGain = context.createGain();
         const loadGain = context.createGain();
         idleGain.gain.value = 0;
@@ -78,6 +80,11 @@ export class Sound {
       .then(() => {
         const tap = new AudioWorkletNode(context, 'engine-haptics', { channelCount: 2, channelCountMode: 'explicit' });
         tap.port.onmessage = (event: MessageEvent<Uint8Array>) => this.controller.pcm(event.data);
+        tap.onprocessorerror = () => {
+          gain.disconnect(tap);
+          tap.disconnect();
+          this.hapticsLoading = null;
+        };
         gain.connect(tap).connect(context.destination);
       })
       .catch(() => {
@@ -103,19 +110,21 @@ export class Sound {
       return;
     }
     const engine = this.engineNodes ?? this.createEngine(context);
+    // Retry a worklet that failed to load instead of leaving the engine without feedback.
+    this.attachHaptics(context, engine.gain);
     // Opening the throttle raises the revs at once, before the bike has picked up speed.
     const pressure = Math.max(0, Math.min(1, throttle));
-    const revs = Math.min(1, speed * 0.6 + pressure * 0.4);
+    const revs = Math.min(1, speed * 0.2 + pressure * 0.8);
     const hertz = ENGINE_IDLE_HERTZ + (ENGINE_TOP_HERTZ - ENGINE_IDLE_HERTZ) * revs;
     const now = context.currentTime;
-    engine.audible.gain.setTargetAtTime(this.enabled ? 1 : 0, now, ENGINE_GLIDE);
+    engine.audible.gain.setTargetAtTime(this.enabled ? this.volume / 100 : 0, now, ENGINE_GLIDE);
     engine.oscillators[0]?.frequency.setTargetAtTime(hertz, now, ENGINE_GLIDE);
     engine.oscillators[1]?.frequency.setTargetAtTime(hertz / 2, now, ENGINE_GLIDE);
     if (engine.sampled) {
       const sample = engine.sampled;
       sample.idle.playbackRate.setTargetAtTime(1 + revs * 1.5, now, ENGINE_GLIDE);
-      sample.load.playbackRate.setTargetAtTime(0.85 + revs * 0.8, now, ENGINE_GLIDE);
-      const mix = Math.min(1, pressure * 0.85 + speed * 0.15);
+      sample.load.playbackRate.setTargetAtTime(0.9 + revs * 0.35, now, ENGINE_GLIDE);
+      const mix = Math.min(1, pressure + speed * 0.15 * (1 - pressure));
       sample.idleGain.gain.setTargetAtTime(Math.cos((mix * Math.PI) / 2), now, ENGINE_GLIDE);
       sample.loadGain.gain.setTargetAtTime(Math.sin((mix * Math.PI) / 2), now, ENGINE_GLIDE);
       engine.filter.Q.setTargetAtTime(0.7, now, ENGINE_GLIDE);
@@ -141,7 +150,7 @@ export class Sound {
     const gain = context.createGain();
     gain.gain.value = 0;
     const audible = context.createGain();
-    audible.gain.value = this.enabled ? 1 : 0;
+    audible.gain.value = this.enabled ? this.volume / 100 : 0;
     filter.connect(gain).connect(audible).connect(context.destination);
     this.attachHaptics(context, gain);
     const synth = context.createGain();
@@ -217,8 +226,12 @@ export class Sound {
   /** A gain that starts at `level` and dies away over `seconds`, already connected to the output. */
   private envelope(context: AudioContext, at: number, seconds: number, level: number): GainNode {
     const gain = context.createGain();
-    gain.gain.setValueAtTime(level, at);
-    gain.gain.exponentialRampToValueAtTime(0.0001, at + seconds);
+    if (this.volume === 0) {
+      gain.gain.setValueAtTime(0, at);
+    } else {
+      gain.gain.setValueAtTime(Math.max(0.0001, (level * this.volume) / 100), at);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + seconds);
+    }
     gain.connect(context.destination);
     return gain;
   }

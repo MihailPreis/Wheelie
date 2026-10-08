@@ -6,6 +6,24 @@ its About screen.
 A change to the physics is a new `PHYSICS_VERSION` and is called out here: replays recorded with
 another physics version cannot be played back.
 
+## 1.1.0 — 2026-10-09
+
+- DualSense Bluetooth input, automatic connection and feedback settings, engine PCM haptics,
+  smooth analogue throttle/brake and adaptive trigger resistance; recover feedback after an output failure.
+- Engine audio drawn from the supplied recording, with a long sustained stereo rev texture;
+  independent music and engine/effects volume controls.
+- Replace the previous music with Rocket Power, Cut and Run and Funky Chunk by Kevin MacLeod,
+  credited under CC BY 4.0. Music is off by default.
+- Simple lean arrows and play/stop throttle/brake icons in the riding controls and replay player.
+- Softer shadows confined to the track; correct bike placement with perspective switched off.
+- Start the ghost when the rider crosses the start flag, aligned to race time.
+- Correct rider orientation during fast flips without changing the simulation.
+- Consistent Back buttons at the bottom of submenus and option lists. Fresh menus select their
+  primary action; pause offers Continue, a fallen rider Restart, confirmations No, and a completed
+  level offers the next one. Reading screens open at the beginning.
+
+Physics version: 1; existing replays remain compatible.
+
 ## 1.0.0
 
 The first public release.

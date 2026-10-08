@@ -23,10 +23,21 @@
 }
 
 .menu-items {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   overflow-y: auto;
   padding: 0 calc(var(--dp) * 30px) calc(var(--dp) * 15px);
   scrollbar-width: none;
+}
+
+.menu-items > * {
+  flex-shrink: 0;
+}
+
+.menu-back {
+  margin-top: auto;
+  padding-top: calc(var(--dp) * 12px);
 }
 
 .menu-items::-webkit-scrollbar {

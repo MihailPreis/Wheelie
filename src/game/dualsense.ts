@@ -49,7 +49,11 @@ export class DualSense {
   private directInput: ControllerPad | null = null;
   private inputTime = 0;
   private outputFailed = false;
+  private retryAfter = 0;
+  private outputRetries = 0;
   onChange: (() => void) | null = null;
+  /** A newly opened controller, separate from status and output-error notifications. */
+  onConnect: (() => void) | null = null;
   error = false;
 
   constructor() {
@@ -126,6 +130,7 @@ export class DualSense {
     if (!device) return false;
     if (this.device === device) {
       this.outputFailed = this.error = false;
+      this.outputRetries = 0;
       this.applied = -1;
       this.applyTriggers();
       this.onChange?.();
@@ -145,12 +150,14 @@ export class DualSense {
     this.device = device;
     this.directInput = null;
     this.outputFailed = false;
+    this.outputRetries = 0;
     device.addEventListener('inputreport', this.readInput);
     this.bluetooth = ids.includes(0x31);
     this.hasPcm = ids.includes(0x32);
     this.error = false;
     this.applied = -1;
     this.applyTriggers();
+    this.onConnect?.();
     this.onChange?.();
     return true;
   }
@@ -165,6 +172,14 @@ export class DualSense {
   engine(): void {
     // A background or unfocused page must never restart feedback.
     this.active = !document.hidden && document.hasFocus();
+    // A brief Bluetooth write failure must not permanently silence the engine.
+    // Retry only while riding in the foreground, and stop after three failed attempts.
+    if (this.active && this.outputFailed && this.outputRetries < 3 && performance.now() >= this.retryAfter) {
+      this.outputRetries++;
+      this.outputFailed = this.error = false;
+      this.applied = -1;
+      this.onChange?.();
+    }
     this.applyTriggers();
   }
 
@@ -222,11 +237,13 @@ export class DualSense {
       .then(async () => {
         if (this.device !== device || this.outputFailed) return;
         await device.sendReport(id, data);
+        if (id === 0x32 && discardIfBusy) this.outputRetries = 0;
       })
       .catch(() => {
         if (this.device !== device) return;
         this.outputFailed = true;
         this.error = true;
+        this.retryAfter = performance.now() + 1000 * (this.outputRetries + 1);
         this.clearPcm();
         // An output failure must never disconnect the rider's controls.
         this.onChange?.();

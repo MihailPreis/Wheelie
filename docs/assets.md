@@ -25,12 +25,23 @@ the Android port by its authors.
 
 ## Music
 
-| Here | Source | Licence |
-|---|---|---|
-| `audio/go.ogg` | "Go" from the album *Three Red Hearts* by Abstraction (Benjamin Burnes), from the [Music Loop Bundle](https://tallbeard.itch.io/music-loop-bundle) published by Tallbeard Studios | CC0 1.0 (public domain) |
+The previous nine-track playlist has been removed. The replacement shortlist focuses on
+instrumental bass, drums and guitar, with one more electronic driving track:
 
-The file is the original Ogg Vorbis, unmodified: it is authored to loop seamlessly, and re-encoding
-or converting it to MP3 would add a gap at the loop point.
+| File | Title / author | Source |
+|---|---|---|
+| `audio/rocket-power.mp3` | Rocket Power — Kevin MacLeod | https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1600038 |
+| `audio/cut-and-run.mp3` | Cut and Run — Kevin MacLeod | https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100851 |
+| `audio/funky-chunk.mp3` | Funky Chunk — Kevin MacLeod | https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500054 |
+
+Downloaded unchanged from incompetech.com on 2026-10-09. Each track's official detail page
+provides this attribution: "TITLE" Kevin MacLeod (incompetech.com), licensed under Creative
+Commons: By Attribution 4.0 License (https://creativecommons.org/licenses/by/4.0/).
+The game's About screen credits every title, author, source and licence.
+
+Bass and drive is the default playlist; Funk and All tracks can be selected separately.
+Playback uses a shuffle bag and 600 ms crossfades. Music and engine/effects have separate
+saved speaker volume controls; speaker levels do not affect DualSense engine PCM.
 
 ## Engine recording
 

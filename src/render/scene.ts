@@ -3,6 +3,7 @@ import type { Pose } from '../core/sim';
 import { BODY_RADII, type Terrain } from '../core/terrain';
 import type { Animator } from './animator';
 import { angleOf } from './geometry';
+import { shadowDepth, shadowGround } from './shadow';
 import type { Sprite, Sprites } from './sprites';
 
 /**
@@ -156,7 +157,10 @@ export class SceneRenderer {
     const visibleLeft = -this.originX / 8;
     const visibleRight = (-this.originX + viewport.width) / 8;
 
-    if (options.perspective) this.drawTrackBack(terrain, pose, animator, visibleLeft, visibleRight, options.shadows);
+    if (options.perspective) this.drawTrackBack(terrain, pose, animator, visibleLeft, visibleRight);
+    if (options.shadows) this.drawGroundShadows(terrain, pose, options);
+    // Physics always includes the original perspective offset; flatten only the drawing.
+    if (!options.perspective) this.originY += 8;
     if (ghost) {
       // The rival of a recorded run: the same bike, faint, behind the player's.
       ctx.globalAlpha = 0.3;
@@ -164,6 +168,7 @@ export class SceneRenderer {
       ctx.globalAlpha = 1;
     }
     this.drawBike(pose, league, options);
+    if (!options.perspective) this.originY -= 8;
     this.drawTrackFront(terrain, animator, visibleLeft, visibleRight);
   }
 
@@ -288,7 +293,6 @@ export class SceneRenderer {
     animator: Animator,
     visibleLeft: number,
     visibleRight: number,
-    shadows: boolean,
   ): void {
     const points = terrain.points;
     const count = terrain.pointCount;
@@ -331,36 +335,90 @@ export class SceneRenderer {
     const lastY = points[(count - 1) * 2 + 1] as number;
     this.trackLine(lastX, lastY, lastX + nextDx, lastY + nextDy);
 
-    if (shadows) this.drawShadow(terrain, pose, animator);
+    // Shadows are drawn after the track, using its surface as a clipping mask.
   }
 
-  /** The bike's shadow on the track: darker the closer the bike is to the ground (`Level._ifiIV`). */
-  private drawShadow(terrain: Terrain, pose: Pose, animator: Animator): void {
-    const points = terrain.points;
-    const from = animator.shadowFrom;
-    const to = animator.shadowTo;
-    if (to > terrain.pointCount - 2 || animator.shadowHeight > 0x88000) return;
-
-    const shade = Math.floor((25 * animator.shadowHeight) / ONE);
-    this.setColor(shade, shade, shade);
-    const px = (i: number) => points[i * 2] as number;
-    const py = (i: number) => points[i * 2 + 1] as number;
-    const heightAt = (segment: number, x: number) => {
-      const slope = (py(segment) - py(segment + 1)) / (px(segment) - px(segment + 1));
-      return py(segment) + (x - px(segment)) * slope;
-    };
-    const left = pose.shadowLeft;
-    const right = pose.shadowRight;
-    const leftY = heightAt(from, left);
-    const rightY = heightAt(to, right);
-    // The shadow lies one unit up, on the surface between the near and far edges.
-    if (from === to) {
-      this.trackLine(left, leftY + ONE, right, rightY + ONE);
-      return;
+  /** A quiet, soft footprint on the finite track, with separate wheel contacts. */
+  private drawGroundShadows(terrain: Terrain, pose: Pose, options: SceneOptions): void {
+    const ctx = this.ctx;
+    const xs = Array.from(pose.x, (x) => x * BODY_SCALE);
+    const ys = Array.from(pose.y, (y) => y * BODY_SCALE);
+    const center = ((xs[1] as number) + (xs[2] as number)) / 2;
+    const radius = Math.max(9, Math.abs((xs[1] as number) - (xs[2] as number)) / 2 + 7);
+    const left = center - radius;
+    const right = center + radius;
+    const ground = shadowGround(terrain, center);
+    const clearance = ground
+      ? Math.max(0, Math.min(ys[1] as number, ys[2] as number) - 8 - ground.y - BODY_RADII[0] * BODY_SCALE)
+      : 160;
+    ctx.save();
+    if (options.perspective) {
+      const surface = new Path2D();
+      const eyeX = xs[0] as number;
+      const eyeY = (ys[0] as number) + 400;
+      for (let i = 0; i < terrain.pointCount - 1; i++) {
+        const x = (terrain.points[i * 2] as number) * TRACK_SCALE;
+        const y = (terrain.points[i * 2 + 1] as number) * TRACK_SCALE;
+        const x2 = (terrain.points[i * 2 + 2] as number) * TRACK_SCALE;
+        const y2 = (terrain.points[i * 2 + 3] as number) * TRACK_SCALE;
+        if (x2 < left - 40 || x > right + 40) continue;
+        const [dx, dy] = shadowDepth(x, y, eyeX, eyeY);
+        const [dx2, dy2] = shadowDepth(x2, y2, eyeX, eyeY);
+        surface.moveTo(this.screenX(x), this.screenY(y));
+        surface.lineTo(this.screenX(x2), this.screenY(y2));
+        surface.lineTo(this.screenX(x2 + dx2), this.screenY(y2 + dy2));
+        surface.lineTo(this.screenX(x + dx), this.screenY(y + dy));
+        surface.closePath();
+      }
+      ctx.clip(surface);
+      if (ground && clearance < 100) {
+        ctx.globalAlpha = (options.dimmed ? 0.06 : 0.16) * (1 - clearance / 100) ** 1.5;
+        ctx.fillStyle = '#233128';
+        ctx.filter = 'blur(1px)';
+        // Sample both sides of an oval along the profile, so it bends over crests.
+        const path = new Path2D();
+        for (const side of [1, -1]) {
+          for (let i = 0; i <= 32; i++) {
+            const t = side === 1 ? i / 32 : 1 - i / 32;
+            const x = left + t * radius * 2;
+            const g = shadowGround(terrain, x);
+            if (!g) continue;
+            const thickness = 2.5 * Math.sqrt(Math.max(0, 1 - (t * 2 - 1) ** 2));
+            const y = g.y + 8 + clearance * 0.025 + side * thickness;
+            if (side === 1 && i === 0) path.moveTo(this.screenX(x), this.screenY(y));
+            else path.lineTo(this.screenX(x), this.screenY(y));
+          }
+        }
+        path.closePath();
+        ctx.fill(path);
+        ctx.filter = 'none';
+      }
+    } else {
+      const start = (terrain.points[0] as number) * TRACK_SCALE;
+      const end = (terrain.points[(terrain.pointCount - 1) * 2] as number) * TRACK_SCALE;
+      ctx.beginPath();
+      ctx.rect(this.screenX(start), -100000, end - start, 200000);
+      ctx.clip();
     }
-    this.trackLine(left, leftY + ONE, px(from + 1), py(from + 1) + ONE);
-    for (let i = from + 1; i < to; i++) this.trackLine(px(i), py(i) + ONE, px(i + 1), py(i + 1) + ONE);
-    this.trackLine(px(to), py(to) + ONE, right, rightY + ONE);
+    for (const wheel of [1, 2]) {
+      const x = xs[wheel] as number;
+      const g = shadowGround(terrain, x);
+      if (!g) continue;
+      const normal = Math.sqrt(1 + g.slope * g.slope);
+      const gap = Math.max(0, ((ys[wheel] as number) - 8 - g.y) / normal - BODY_RADII[0] * BODY_SCALE);
+      if (gap >= 10) continue;
+      ctx.save();
+      ctx.globalAlpha = (options.dimmed ? 0.08 : 0.24) * (1 - gap / 10) ** 2;
+      ctx.translate(this.screenX(x), this.screenY(g.y + (options.perspective ? 8 : 0.3)));
+      ctx.rotate(-Math.atan(g.slope));
+      ctx.fillStyle = '#233128';
+      ctx.filter = 'blur(0.6px)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 3.5, options.perspective ? 1.2 : 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
   }
 
   /** The near edge of the track (`Level._aiV`). */

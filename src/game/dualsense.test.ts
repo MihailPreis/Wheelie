@@ -57,6 +57,19 @@ describe('DualSense lifecycle', () => {
     expect(await connecting).toBe(true);
   });
 
+  it('notifies a new connection once without re-enabling options on status changes', async () => {
+    environment();
+    const controller = new DualSense();
+    const connected = vi.fn();
+    controller.onConnect = connected;
+    await flush();
+    expect(connected).toHaveBeenCalledTimes(1);
+    controller.configure(false, 0);
+    controller.engine();
+    await controller.connect();
+    expect(connected).toHaveBeenCalledTimes(1);
+  });
+
   it('streams audio and releases both triggers on focus loss', async () => {
     const { device, window } = environment();
     const controller = new DualSense();
@@ -109,6 +122,51 @@ describe('DualSense lifecycle', () => {
     await flush();
     expect(controller.connected).toBe(true);
     expect(hid.requestDevice).not.toHaveBeenCalled();
+  });
+
+  it('recovers haptics from a transient Bluetooth write failure without closing input', async () => {
+    const { device } = environment();
+    const controller = new DualSense();
+    await flush();
+    device.sendReport.mockRejectedValueOnce(new Error('Temporary radio failure'));
+    controller.configure(true, 2);
+    controller.engine();
+    controller.pcm(new Uint8Array(64).fill(32));
+    await flush();
+    expect(controller.error).toBe(true);
+    await vi.advanceTimersByTimeAsync(1001);
+    controller.engine();
+    controller.pcm(new Uint8Array(64).fill(32));
+    await flush();
+    expect(controller.error).toBe(false);
+    expect(controller.pcmAvailable).toBe(true);
+    expect(device.sendReport.mock.calls.at(-1)?.[0]).toBe(0x32);
+    expect(device.close).not.toHaveBeenCalled();
+  });
+
+  it('bounds recovery attempts and never retries haptics in the background', async () => {
+    const { device, document } = environment();
+    const controller = new DualSense();
+    await flush();
+    device.sendReport.mockRejectedValue(new Error('Unavailable'));
+    controller.configure(true, 2);
+    controller.engine();
+    await flush();
+    const initial = device.sendReport.mock.calls.length;
+    document.hidden = true;
+    await vi.advanceTimersByTimeAsync(5000);
+    controller.engine();
+    await flush();
+    expect(device.sendReport.mock.calls.length).toBe(initial);
+    document.hidden = false;
+    for (let i = 0; i < 5; i++) {
+      await vi.advanceTimersByTimeAsync(5000);
+      controller.engine();
+      await flush();
+    }
+    expect(device.sendReport.mock.calls.length - initial).toBe(3);
+    expect(controller.error).toBe(true);
+    expect(controller.connected).toBe(true);
   });
 
   it('keeps the game usable when WebHID is unavailable', async () => {

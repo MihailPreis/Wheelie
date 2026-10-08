@@ -19,6 +19,10 @@ export interface Settings {
   music: boolean;
   /** Engine and effects. */
   sound: boolean;
+  musicVolume: number;
+  /** 0 bass and drive, 1 funk, 2 all tracks. */
+  musicStyle: number;
+  sfxVolume: number;
   analogTriggers: boolean;
   engineHaptics: boolean;
   /** 0 off, 1 light, 2 medium, 3 firm. */
@@ -40,8 +44,11 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   vibrate: true,
   keypadInMenu: true,
   ghost: true,
-  music: true,
+  music: false,
   sound: true,
+  musicVolume: 100,
+  musicStyle: 0,
+  sfxVolume: 100,
   analogTriggers: false,
   engineHaptics: true,
   triggerResistance: 1,
@@ -85,6 +92,13 @@ export function loadSettings(): Settings {
   )
     settings.triggerResistance = stored.triggerResistance as number;
   settings.name = normalizeName(stored.name);
+  if (stored.musicStyle === 0 || stored.musicStyle === 1 || stored.musicStyle === 2)
+    settings.musicStyle = stored.musicStyle;
+  for (const key of ['musicVolume', 'sfxVolume'] as const) {
+    const value = stored[key];
+    if (typeof value === 'number' && Number.isFinite(value))
+      settings[key] = Math.round(Math.max(0, Math.min(100, value)) / 10) * 10;
+  }
   return settings;
 }
 

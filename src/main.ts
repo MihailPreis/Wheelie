@@ -138,7 +138,7 @@ async function main(): Promise<void> {
   const toasts = new Toasts();
   const drafts = new Drafts();
   const output = new AudioOutput();
-  const music = new Music(output, `${base}assets/audio/go.ogg`);
+  const music = new Music(output, `${base}assets/audio/`);
   const controller = new DualSense();
   setEnhancedGamepadSource(() => controller.gamepad);
   const sound = new Sound(output, controller, `${base}assets/audio/motorcycle.mp3`);

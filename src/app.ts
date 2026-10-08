@@ -9,6 +9,7 @@ import {
 } from './achievements/achievements';
 import { analyseRun } from './achievements/analyse';
 import type { Music } from './audio/music';
+import { MUSIC_TRACKS } from './audio/playlist';
 import type { Sound } from './audio/sound';
 import { PHYSICS_VERSION } from './core/version';
 import {
@@ -203,6 +204,8 @@ export class App {
     this.trackCounts = pack.levels.map((level) => level.length);
     this.progress = this.loadProgress(pack);
     this.applySettings();
+    this.sound.controller.onConnect = () => this.enableDualSense();
+    if (this.sound.controller.connected) this.enableDualSense();
     this.mods = new ModsScreens(
       {
         open: (builder) => this.open(builder),
@@ -318,12 +321,26 @@ export class App {
     this.keypad.vibrate = s.vibrate;
     if (this.music.enabled !== s.music) this.music.enabled = s.music;
     this.sound.enabled = s.sound;
+    this.music.volume = s.musicVolume;
+    this.music.style = s.musicStyle;
+    this.sound.volume = s.sfxVolume;
     this.updateKeypad();
   }
 
   private saveSettings(): void {
     saveSettings(this.settings);
     this.applySettings();
+  }
+
+  /** Enable the controller's complete feature set on connection; manual changes still work. */
+  private enableDualSense(): void {
+    this.settings.analogTriggers = true;
+    this.settings.engineHaptics = true;
+    this.settings.vibrate = true;
+    if (this.settings.triggerResistance === 0) this.settings.triggerResistance = 2;
+    this.input.release();
+    this.input.gamepadConnected();
+    this.saveSettings();
   }
 
   /** Switches to another level pack, with its own progress and scores, and shows its tracks. */
@@ -840,9 +857,9 @@ export class App {
 
   private readonly dailyPauseMenu: ScreenBuilder = () => ({
     title: S.ingame,
-    back: () => this.resume(),
+    back: () => (this.game.crashed ? void this.playDaily() : this.resume()),
     items: [
-      { kind: 'action', label: S.continue, run: () => this.resume() },
+      ...(!this.game.crashed ? [{ kind: 'action' as const, label: S.continue, run: () => this.resume() }] : []),
       { kind: 'action', label: S.restart, run: () => void this.playDaily() },
       this.link(S.options, this.optionsMenu(this.dailyPauseMenu)),
       { kind: 'action', label: S.daily, run: () => this.showFrontMenu(this.dailyScreen) },
@@ -860,7 +877,7 @@ export class App {
     const best = dailyBestEver(daily.day) ?? result.time;
     const screen: ScreenBuilder = () => ({
       title: S.finished,
-      back: null,
+      back: () => this.showFrontMenu(this.dailyScreen),
       items: [
         { kind: 'text', html: formatScoreTime(Math.floor(result.time / 10)), big: true },
         {
@@ -1419,13 +1436,21 @@ export class App {
         label: `${S.next}: ${this.trackName(level, track + 1)}`,
         run: () => this.play(level, track + 1),
       });
+    } else if (this.progress.selectedLevel !== level && this.trackAt(this.progress.selectedLevel, this.selectedTrack)) {
+      const nextLevel = this.progress.selectedLevel;
+      const nextTrack = this.selectedTrack;
+      items.push({
+        kind: 'action',
+        label: `${S.next}: ${LEVEL_NAMES[nextLevel]} / ${this.trackName(nextLevel, nextTrack)}`,
+        run: () => this.play(nextLevel, nextTrack),
+      });
     }
     items.push({
       kind: 'action',
       label: `${S.restart}: ${this.trackName(level, track)}`,
       run: () => this.play(level, track),
     });
-    const screen: ScreenBuilder = () => ({ title: S.finished, back: null, items });
+    const screen: ScreenBuilder = () => ({ title: S.finished, back: () => this.showFrontMenu(this.playMenu), items });
     items.push({
       kind: 'action',
       label: S.watchReplay,
@@ -1481,7 +1506,6 @@ export class App {
     title: S.main,
     back: null,
     items: [
-      ...(this.updateReady ? [{ kind: 'action' as const, label: S.updateNow, run: () => location.reload() }] : []),
       this.link(S.playMenu, this.playMenu),
       { kind: 'action', label: S.daily, run: () => void this.openDaily() },
       { kind: 'action', label: S.mods, run: () => this.open(this.mods.menu) },
@@ -1491,6 +1515,7 @@ export class App {
       this.link(S.options, this.optionsMenu(this.mainMenu)),
       this.link(S.help, this.helpMenu(this.mainMenu)),
       this.link(S.about, this.textScreen(S.about, S.aboutText, this.mainMenu)),
+      ...(this.updateReady ? [{ kind: 'action' as const, label: S.updateNow, run: () => location.reload() }] : []),
       ...(this.installOffer
         ? [
             {
@@ -1597,9 +1622,9 @@ export class App {
 
   private readonly ingameMenu: ScreenBuilder = () => ({
     title: S.ingame,
-    back: () => this.resume(),
+    back: () => (this.game.crashed ? this.play(this.level, this.track) : this.resume()),
     items: [
-      { kind: 'action', label: S.continue, run: () => this.resume() },
+      ...(!this.game.crashed ? [{ kind: 'action' as const, label: S.continue, run: () => this.resume() }] : []),
       {
         kind: 'action',
         label: `${S.restart}: ${this.trackName(this.level, this.track)}`,
@@ -1689,7 +1714,50 @@ export class App {
             },
           },
           toggle(S.music, 'music'),
+          {
+            kind: 'option',
+            label: S.musicVolume,
+            options: Array.from({ length: 11 }, (_, index) => `${index * 10}%`),
+            value: this.settings.musicVolume / 10,
+            change: (value) => {
+              this.settings.musicVolume = value * 10;
+              this.saveSettings();
+              this.refresh();
+            },
+          },
+          {
+            kind: 'option',
+            label: S.musicStyle,
+            options: S.musicStyles,
+            value: this.settings.musicStyle,
+            change: (value) => {
+              this.settings.musicStyle = value;
+              this.saveSettings();
+              this.refresh();
+            },
+          },
+          {
+            kind: 'option',
+            label: S.musicTrack,
+            options: this.music.tracks.map((index) => `${MUSIC_TRACKS[index]?.title} — ${MUSIC_TRACKS[index]?.artist}`),
+            value: this.music.tracks.indexOf(this.music.trackIndex),
+            change: (value) => {
+              this.music.select(this.music.tracks[value] as number);
+              this.refresh();
+            },
+          },
           toggle(S.sound, 'sound'),
+          {
+            kind: 'option',
+            label: S.sfxVolume,
+            options: Array.from({ length: 11 }, (_, index) => `${index * 10}%`),
+            value: this.settings.sfxVolume / 10,
+            change: (value) => {
+              this.settings.sfxVolume = value * 10;
+              this.saveSettings();
+              this.refresh();
+            },
+          },
           this.link(S.clearHighscore, this.eraseScreen(self)),
           { kind: 'action', label: S.back, run: back },
         ],
@@ -1711,7 +1779,7 @@ export class App {
         this.open(self);
       };
       const ask = (text: string) =>
-        this.open(() => ({ title: S.controls, back: null, items: [{ kind: 'text', html: text }] }));
+        this.open(() => ({ title: S.controls, back: cancel, text: true, items: [{ kind: 'text', html: text }] }));
       const cancel = () => {
         this.capture = null;
         this.open(self);
@@ -1813,7 +1881,7 @@ export class App {
         items: [
           { kind: 'text', html: status },
           { kind: 'text', html: S.dualSenseHelp },
-          ...(controller.supported
+          ...(controller.supported && (!controller.connected || controller.error)
             ? [
                 {
                   kind: 'action' as const,

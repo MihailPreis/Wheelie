@@ -52,7 +52,7 @@ test('main menu leads to every section and back', async ({ page }) => {
   await press(page, 'Escape', 'Escape');
   await expect(title(page)).toHaveText('Main');
 
-  await press(page, 'ArrowDown', 'Enter');
+  await pick(page, 'About');
   await expect(title(page)).toHaveText('About');
   await expect(texts(page).first()).toContainText('not affiliated');
 });
@@ -70,6 +70,74 @@ test('options are toggled and remembered', async ({ page }) => {
   await expect(title(page)).toHaveText('Main', { timeout: 10_000 });
   await pick(page, 'Options');
   await expect(perspective).toHaveText('Off');
+});
+
+test('submenu footers and initial choices stay consistent across reopening', async ({ page }) => {
+  const selected = page.locator('.menu-item.selected .menu-label');
+  const footer = async () => {
+    await expect(items(page).last()).toHaveText('Back');
+    await expect(page.locator('.menu-back')).toHaveCount(1);
+  };
+  await expect(selected).toHaveText('Play Menu');
+  await pick(page, 'Options');
+  await expect(page.locator('.menu-item', { hasText: /^Music:/ }).locator('.menu-value')).toHaveText('Off');
+  await footer();
+  await pick(page, 'Screen');
+  await footer();
+  await expect(selected).toHaveText('Modern');
+  await page.locator('.menu-back').click();
+  await expect(selected).toHaveText('Screen: ');
+  await pick(page, 'Controls');
+  await footer();
+  await pick(page, 'DualSense');
+  await footer();
+  await page.locator('.menu-back').click();
+  await expect(selected).toHaveText('Accelerate: Up, W');
+  await page.locator('.menu-back').click();
+  await pick(page, 'Clear highscore');
+  await footer();
+  await expect(selected).toHaveText('No');
+  await page.keyboard.press('ArrowDown');
+  await expect(selected).toHaveText('Yes');
+  await page.locator('.menu-back').click();
+  await pick(page, 'Clear highscore');
+  await expect(selected).toHaveText('No');
+  await page.locator('.menu-back').click();
+  await page.locator('.menu-back').click();
+  await expect(selected).toHaveText('Play Menu');
+  for (const section of ['Help', 'About', 'Achievements', 'Mods', 'Editor', 'My runs']) {
+    await pick(page, section);
+    await footer();
+    await page.locator('.menu-back').click();
+    await expect(selected).toHaveText('Play Menu');
+  }
+});
+
+test('pause offers Continue and a fallen rider is offered Restart', async ({ page }) => {
+  const selected = page.locator('.menu-item.selected .menu-label');
+  await press(page, 'Enter', 'Enter');
+  await expect(page.locator('.menu')).toBeHidden();
+  await press(page, 'Escape');
+  await expect(selected).toHaveText('Continue');
+  await expect(items(page).last()).toHaveText('Back');
+  await pick(page, 'Help');
+  await page.locator('.menu-back').click();
+  await expect(selected).toHaveText('Continue');
+  await page.locator('.menu-back').click();
+  await expect(page.locator('.menu')).toBeHidden();
+  await press(page, 'Escape');
+  await expect(selected).toHaveText('Continue');
+  await page.locator('.menu-back').click();
+  await page.evaluate(() => {
+    const { game } = (window as unknown as { wheelie: { game: { phase: string; phaseTicks: number } } }).wheelie;
+    game.phase = 'crashed';
+    game.phaseTicks = 10000;
+  });
+  await press(page, 'Escape');
+  await expect(selected).toContainText('Restart:');
+  await expect(items(page)).not.toContainText(['Continue']);
+  await page.locator('.menu-back').click();
+  await expect(page.locator('.menu')).toBeHidden();
 });
 
 test('a riding key is changed in the options, and the browser Back button steps back', async ({ page }) => {
@@ -103,6 +171,33 @@ test('a riding key is changed in the options, and the browser Back button steps 
   await expect(title(page)).toHaveText('Ingame');
 });
 
+test('music selection, independent audio levels and credits are available', async ({ page }) => {
+  await pick(page, 'Options');
+  await pick(page, 'Music volume');
+  await pick(page, '30%');
+  await pick(page, 'Engine and effects volume');
+  await pick(page, '80%');
+  await pick(page, 'Music playlist');
+  await pick(page, 'Funk');
+  await pick(page, 'Music track');
+  await pick(page, 'Funky Chunk');
+  await expect(page.locator('.menu-item', { hasText: 'Music track' })).toContainText('Funky Chunk');
+  await page.reload();
+  await page.keyboard.press('Enter');
+  await expect(title(page)).toHaveText('Main');
+  await pick(page, 'Options');
+  await expect(page.locator('.menu-item', { hasText: 'Music volume' })).toContainText('30%');
+  await expect(page.locator('.menu-item', { hasText: 'Engine and effects volume' })).toContainText('80%');
+  await press(page, 'Escape');
+  await pick(page, 'About');
+  await expect(texts(page).first()).toContainText('Rocket Power');
+  await expect(texts(page).first()).toContainText('Kevin MacLeod');
+  await expect(page.locator('.menu-text a', { hasText: 'CC BY 4.0' }).first()).toHaveAttribute(
+    'href',
+    'https://creativecommons.org/licenses/by/4.0/',
+  );
+});
+
 test('a new version and installation as an app are offered in the main menu', async ({ page }) => {
   await expect(items(page)).toHaveCount(9);
   await page.evaluate(() => {
@@ -122,7 +217,8 @@ test('a new version and installation as an app are offered in the main menu', as
     (window as unknown as { wheelie: { app: { updateAvailable(): void } } }).wheelie.app.updateAvailable(),
   );
   await expect(page.locator('.toast')).toContainText('A new version is ready');
-  await expect(items(page).first()).toHaveText('Restart with the new version');
+  await expect(items(page).first()).toHaveText('Play Menu');
+  await expect(items(page)).toContainText(['Restart with the new version']);
   await pick(page, 'About');
   await expect(texts(page).first()).toContainText(/Wheelie! \d+\.\d+\.\d+/);
 });
@@ -237,8 +333,10 @@ test('a level pack is installed from the catalogue, played and deleted', async (
   await expect(title(page)).toHaveText('Installed mods');
   await expect(items(page).nth(1)).toContainText('active');
   await press(page, 'ArrowDown', 'Enter');
-  await expect(items(page).first()).toHaveText('Delete');
-  await press(page, 'Enter', 'ArrowDown', 'Enter');
+  await expect(items(page).first()).toHaveText('Play these levels');
+  await pick(page, 'Delete');
+  await expect(page.locator('.menu-item.selected')).toHaveText('No');
+  await press(page, 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('Play');
   expect(await activePack()).toBe('"original"');
 });

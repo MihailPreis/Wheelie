@@ -253,9 +253,8 @@ export class ModsScreens {
       items.push({ kind: 'space', size: 10 });
       if (this.host.activePackId() === id) {
         items.push({ kind: 'text', html: S.activeText });
-      } else {
-        items.push({ kind: 'action', label: S.playThese, run: () => this.use(installed, back) });
       }
+      items.push({ kind: 'action', label: S.playThese, run: () => this.use(installed, back) });
       if (installed) {
         items.push({ kind: 'action', label: S.delete, run: () => this.host.open(this.deleteScreen(installed, self)) });
       }

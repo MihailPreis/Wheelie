@@ -1,3 +1,4 @@
+import { MUSIC_CREDITS } from '../audio/playlist';
 import { APP_NAME, APP_VERSION } from '../config';
 import type { Strings } from './strings';
 
@@ -193,6 +194,11 @@ export const RU: Strings = {
   keyboardInMenu: 'Экранные кнопки в меню',
   ghost: 'Призрак',
   music: 'Музыка',
+  musicVolume: 'Громкость музыки',
+  sfxVolume: 'Громкость двигателя и эффектов',
+  musicTrack: 'Музыкальный трек',
+  musicStyle: 'Музыкальный плейлист',
+  musicStyles: ['Бас и драйв', 'Фанк', 'Все треки'],
   sound: 'Звук',
   clearHighscore: 'Очистить рекорды',
   fullReset: 'Полный сброс',
@@ -240,7 +246,7 @@ export const RU: Strings = {
 <b>Gravity Defied - Trial Racing</b> — Codebrew Software<br>codebrew.se &copy; 2004<br><br>
 <b>Gravity Defied Classic</b> для Android — Григорий Клюшников и Евгений Зиновьев<br>gdtr.net &copy; 2014<br><br>
 <b>Паки уровней</b> в меню «Моды» созданы сообществом gdtr.net; у каждого указан автор.<br><br>
-<b>Музыка</b>: «Go», Abstraction, альбом Three Red Hearts (общественное достояние)<br><br>
+<b>Музыка</b><br>${MUSIC_CREDITS}<br><br>
 Исходный код под лицензией GNU GPL v2:<br>github.com/MihailPreis/Wheelie`,
   search: 'Поиск',
   nothingFound: 'Ничего не найдено.',

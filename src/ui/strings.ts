@@ -1,3 +1,4 @@
+import { MUSIC_CREDITS } from '../audio/playlist';
 import { APP_NAME, APP_VERSION } from '../config';
 import { readJson, writeJson } from '../storage/store';
 import { RU } from './strings-ru';
@@ -218,6 +219,11 @@ const EN = {
   keyboardInMenu: 'Touch controls in menus',
   ghost: 'Ghost',
   music: 'Music',
+  musicVolume: 'Music volume',
+  sfxVolume: 'Engine and effects volume',
+  musicTrack: 'Music track',
+  musicStyle: 'Music playlist',
+  musicStyles: ['Bass and drive', 'Funk', 'All tracks'] as readonly string[],
   sound: 'Sound',
   clearHighscore: 'Clear highscore',
   fullReset: 'Full Reset',
@@ -265,7 +271,7 @@ This is a fan project. It is not affiliated with, endorsed by or connected to Co
 <b>Gravity Defied - Trial Racing</b> by Codebrew Software<br>codebrew.se &copy; 2004<br><br>
 <b>Gravity Defied Classic</b> for Android by Gregory Klyushnikov and Evgeny Zinoviev<br>gdtr.net &copy; 2014<br><br>
 <b>Level packs</b> in the Mods menu were made by the gdtr.net community; each one shows its author.<br><br>
-<b>Music</b>: "Go" by Abstraction, from the album Three Red Hearts (public domain)<br><br>
+<b>Music</b><br>${MUSIC_CREDITS}<br><br>
 Source code, under the GNU GPL v2:<br>github.com/MihailPreis/Wheelie`,
   search: 'Search',
   nothingFound: 'Nothing found.',

@@ -1,4 +1,5 @@
 import './menu.css';
+import { STRINGS as S } from '../strings';
 
 /**
  * The menu, laid out as in the Android port: a title, then a column of items, the highlighted one
@@ -37,6 +38,8 @@ export interface MenuScreen {
   back: (() => void) | null;
   /** A screen of reading matter: up and down scroll instead of moving the highlight. */
   text?: boolean;
+  /** Item index to select on opening; otherwise the first interactive item. */
+  initialSelection?: number;
 }
 
 export type MenuKey = 'up' | 'down' | 'left' | 'right' | 'fire' | 'back';
@@ -59,8 +62,6 @@ export class MenuView {
   private screen: MenuScreen | null = null;
   private selected = -1;
   private rows: (HTMLElement | null)[] = [];
-  /** Remembers the highlighted row per screen title, so coming back lands where one left. */
-  private readonly remembered = new Map<string, number>();
   private nameInput: { chars: string[]; cursor: number; done: (name: string) => void } | null = null;
 
   constructor(private readonly spriteUrl: (name: string) => string) {
@@ -90,8 +91,25 @@ export class MenuView {
 
   /** Shows a screen. `keepSelection` keeps the highlight where it is, for a rebuilt screen. */
   show(screen: MenuScreen, keepSelection = false): void {
-    const previous = keepSelection && this.screen?.title === screen.title ? this.selected : undefined;
-    if (this.screen && !keepSelection) this.remembered.set(this.screen.title, this.selected);
+    const previousItem =
+      keepSelection && this.screen?.title === screen.title ? this.screen.items[this.selected] : undefined;
+    const previous =
+      previousItem && 'label' in previousItem
+        ? screen.items.findIndex(
+            (item) => item.kind === previousItem.kind && 'label' in item && item.label === previousItem.label,
+          )
+        : undefined;
+    // One consistent footer, including option lists and confirmation screens.
+    if (screen.back) {
+      const footer = screen.items.find((item) => item.kind === 'action' && item.label === S.back);
+      screen = {
+        ...screen,
+        items: [
+          ...screen.items.filter((item) => item.kind !== 'action' || item.label !== S.back),
+          footer ?? { kind: 'action', label: S.back, run: screen.back },
+        ],
+      };
+    }
     this.screen = screen;
     this.nameInput = null;
     this.element.hidden = false;
@@ -104,7 +122,7 @@ export class MenuView {
       return item.kind === 'action' || item.kind === 'option' || item.kind === 'input' ? row : null;
     });
 
-    const wanted = previous ?? this.remembered.get(screen.title) ?? -1;
+    const wanted = previous ?? screen.initialSelection ?? -1;
     this.select(this.rows[wanted] ? wanted : this.rows.findIndex((row) => row !== null));
     if (!keepSelection) this.list.scrollTop = 0;
     if (!screen.text) this.revealSelected();
@@ -127,6 +145,7 @@ export class MenuView {
     }
 
     const row = el('div', 'menu-item');
+    row.classList.toggle('menu-back', item.kind === 'action' && item.label === S.back);
     const helmet = el('span', 'menu-helmet');
     helmet.append(this.sprite('s_helmet', 'menu-helmet-image'));
     row.append(helmet);
@@ -202,19 +221,24 @@ export class MenuView {
 
   /** A list of an option's values to pick from, as the original shows when an option is selected. */
   private pick(item: Extract<MenuItem, { kind: 'option' }>, parent: MenuScreen): void {
-    const back = () => this.show(parent);
+    const parentSelection = this.selected;
+    const back = () => this.show({ ...parent, initialSelection: parentSelection });
     const screen: MenuScreen = {
       title: item.label,
       back,
+      initialSelection: item.value,
       items: item.options.map((label, value) => ({
         kind: 'action' as const,
         label,
         run: () => {
           item.change(value);
+          if (this.screen?.title === parent.title) {
+            this.select(parentSelection);
+            this.revealSelected();
+          }
         },
       })),
     };
-    this.remembered.set(screen.title, item.value);
     this.show(screen);
     item.options.forEach((_, value) => {
       if (item.unlocked !== undefined && value > item.unlocked) {
@@ -306,9 +330,12 @@ export class MenuView {
     const ok = el('div', 'menu-item selected');
     const helmet = el('span', 'menu-helmet');
     helmet.append(this.sprite('s_helmet', 'menu-helmet-image'));
-    ok.append(helmet, el('span', 'menu-label', 'Ok'));
+    ok.append(helmet, el('span', 'menu-label', S.ok));
     ok.addEventListener('click', () => this.nameKey('fire'));
-    this.list.replaceChildren(letters, ok);
+    const back = el('div', 'menu-item menu-back');
+    back.append(el('span', 'menu-helmet'), el('span', 'menu-label', S.back));
+    back.addEventListener('click', () => this.nameKey('back'));
+    this.list.replaceChildren(letters, ok, back);
   }
 
   private cycleLetter(delta: 1 | -1): void {
