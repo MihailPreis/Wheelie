@@ -104,14 +104,14 @@ a.player-button {
   text-align: center;
 }
 
-/* The bike's four controls, laid out as the arrow keys are. */
+/* The riding layout: lean indicators on the left, gas and brake on the right. */
 .player-keys {
   position: absolute;
+  left: calc(var(--dp) * 12px);
   right: calc(var(--dp) * 12px);
   bottom: 100%;
-  display: grid;
-  grid-template: repeat(2, calc(var(--dp) * 22px)) / repeat(3, calc(var(--dp) * 22px));
-  gap: calc(var(--dp) * 3px);
+  display: flex;
+  justify-content: space-between;
   margin-bottom: calc(var(--dp) * 10px);
   pointer-events: none;
 }
@@ -125,51 +125,27 @@ a.player-button {
   align-items: center;
   justify-content: center;
   border: calc(var(--dp) * 1px) solid #000;
-  background: rgb(255 255 255 / 85%);
+  background: #fff;
+  width: calc(var(--dp) * 44px);
+  height: calc(var(--dp) * 40px);
+  padding: calc(var(--dp) * 6px);
+}
+
+.player-key-group {
+  display: flex;
+  gap: calc(var(--dp) * 6px);
 }
 
 .player-key.held {
   background: #29aa27;
 }
 
-/* Arrowheads drawn with borders: the game's font has no arrows. */
-.player-key::after {
-  content: "";
-  border: calc(var(--dp) * 5px) solid transparent;
-}
-
-.player-key-up {
-  grid-area: 1 / 2;
-}
-
-.player-key-up::after {
-  border-top-width: 0;
-  border-bottom-color: #000;
-}
-
-.player-key-left {
-  grid-area: 2 / 1;
-}
-
-.player-key-left::after {
-  border-left-width: 0;
-  border-right-color: #000;
-}
-
-.player-key-down {
-  grid-area: 2 / 2;
-}
-
-.player-key-down::after {
-  border-bottom-width: 0;
-  border-top-color: #000;
-}
-
-.player-key-right {
-  grid-area: 2 / 3;
-}
-
-.player-key-right::after {
-  border-right-width: 0;
-  border-left-color: #000;
+.player-key svg {
+  width: 85%;
+  height: 85%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }

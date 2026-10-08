@@ -3,6 +3,7 @@ import { inputLean, inputThrottle } from '../formats/replay';
 import type { Game } from '../game/game';
 import { formatTime } from '../render/hud';
 import { readJson, writeJson } from '../storage/store';
+import { controlIcon } from '../ui/control-icons';
 import { STRINGS as S } from '../ui/strings';
 import './controls.css';
 
@@ -68,7 +69,21 @@ export class PlayerControls {
   constructor(private readonly game: Game) {
     this.element.hidden = true;
     this.timeline.append(this.played, this.marks);
-    this.keys.append(...this.keyLights);
+    for (const indexes of [
+      [1, 2],
+      [0, 3],
+    ]) {
+      const group = el('div', 'player-key-group');
+      for (const index of indexes) group.append(this.keyLights[index] as HTMLElement);
+      this.keys.append(group);
+    }
+    const actions = ['accelerate', 'leanBack', 'leanForward', 'brake'] as const;
+    const labels = [S.actions[0], S.actions[2], S.actions[3], S.actions[1]];
+    this.keyLights.forEach((light, index) => {
+      light.append(controlIcon(actions[index] as (typeof actions)[number]));
+      light.setAttribute('aria-label', labels[index] ?? '');
+      light.setAttribute('role', 'img');
+    });
     this.keys.hidden = readJson<unknown>(KEYS_SHOWN_KEY) !== true;
     this.siteLink.target = '_blank';
     this.siteLink.rel = 'noopener';

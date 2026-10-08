@@ -1,7 +1,9 @@
+import type { DualSense } from '../game/dualsense';
+import { engineLoop } from './engine-sample';
 import type { AudioOutput } from './output';
 
 // The original game was silent, so everything here is new: an engine and a few effects, all
-// synthesised, none of them read back by the simulation.
+// recorded/synthesised, none of them read back by the simulation.
 
 const ENGINE_IDLE_HERTZ = 48;
 const ENGINE_TOP_HERTZ = 170;
@@ -18,6 +20,9 @@ interface Engine {
   oscillators: OscillatorNode[];
   filter: BiquadFilterNode;
   gain: GainNode;
+  audible: GainNode;
+  synth: GainNode;
+  sampled: { idle: AudioBufferSourceNode; load: AudioBufferSourceNode; idleGain: GainNode; loadGain: GainNode } | null;
 }
 
 export class Sound {
@@ -25,7 +30,60 @@ export class Sound {
   private engineNodes: Engine | null = null;
   private noise: AudioBuffer | null = null;
 
-  constructor(private readonly output: AudioOutput) {}
+  constructor(
+    private readonly output: AudioOutput,
+    readonly controller: DualSense,
+    private readonly engineUrl: string,
+  ) {}
+
+  private hapticsLoading: Promise<void> | null = null;
+  private sampleLoading: Promise<void> | null = null;
+
+  private attachSample(context: AudioContext, engine: Engine): void {
+    if (this.sampleLoading) return;
+    this.sampleLoading = fetch(this.engineUrl)
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Engine recording unavailable');
+        const recording = await context.decodeAudioData(await response.arrayBuffer());
+        // The supplied 48.7-second recording: steady idle and the strongest sustained rev.
+        const idle = context.createBufferSource();
+        idle.buffer = engineLoop(context, recording, 12, 15.8);
+        const load = context.createBufferSource();
+        load.buffer = engineLoop(context, recording, 23.8, 25.3, 0.25);
+        const idleGain = context.createGain();
+        const loadGain = context.createGain();
+        idleGain.gain.value = 0;
+        loadGain.gain.value = 0;
+        idle.loop = load.loop = true;
+        idle.connect(idleGain).connect(engine.filter);
+        load.connect(loadGain).connect(engine.filter);
+        idle.start();
+        load.start();
+        engine.sampled = { idle, load, idleGain, loadGain };
+        engine.synth.gain.setTargetAtTime(0, context.currentTime, ENGINE_GLIDE);
+      })
+      .catch(() => {
+        // The synthesised engine remains usable when a recording cannot be loaded or decoded.
+      });
+  }
+
+  unlock(): void {
+    this.output.unlock();
+  }
+
+  private attachHaptics(context: AudioContext, gain: GainNode): void {
+    if (!context.audioWorklet || this.hapticsLoading) return;
+    this.hapticsLoading = context.audioWorklet
+      .addModule(new URL('./haptics-worklet.js', import.meta.url).href)
+      .then(() => {
+        const tap = new AudioWorkletNode(context, 'engine-haptics', { channelCount: 2, channelCountMode: 'explicit' });
+        tap.port.onmessage = (event: MessageEvent<Uint8Array>) => this.controller.pcm(event.data);
+        gain.connect(tap).connect(context.destination);
+      })
+      .catch(() => {
+        this.hapticsLoading = null;
+      });
+  }
 
   /** The context if sound may play right now. */
   private get context(): AudioContext | null {
@@ -36,24 +94,41 @@ export class Sound {
    * Follows the bike: `speed` is 0…1 of top speed. Call every frame while riding, and
    * {@link Sound.engineOff} when the bike is not under the player's control.
    */
-  engine(speed: number, throttle: boolean): void {
-    const context = this.context;
+  engine(speed: number, throttle: number): void {
+    this.controller.engine();
+    const context = this.enabled || this.controller.pcmAvailable ? this.output.context : null;
     if (!context) {
-      this.engineOff();
+      if (this.engineNodes && this.output.context)
+        this.engineNodes.gain.gain.setTargetAtTime(0, this.output.context.currentTime, ENGINE_GLIDE);
       return;
     }
     const engine = this.engineNodes ?? this.createEngine(context);
     // Opening the throttle raises the revs at once, before the bike has picked up speed.
-    const revs = Math.min(1, speed * 0.85 + (throttle ? 0.15 : 0));
+    const pressure = Math.max(0, Math.min(1, throttle));
+    const revs = Math.min(1, speed * 0.6 + pressure * 0.4);
     const hertz = ENGINE_IDLE_HERTZ + (ENGINE_TOP_HERTZ - ENGINE_IDLE_HERTZ) * revs;
     const now = context.currentTime;
+    engine.audible.gain.setTargetAtTime(this.enabled ? 1 : 0, now, ENGINE_GLIDE);
     engine.oscillators[0]?.frequency.setTargetAtTime(hertz, now, ENGINE_GLIDE);
     engine.oscillators[1]?.frequency.setTargetAtTime(hertz / 2, now, ENGINE_GLIDE);
-    engine.filter.frequency.setTargetAtTime(350 + 1400 * revs + (throttle ? 500 : 0), now, ENGINE_GLIDE);
-    engine.gain.gain.setTargetAtTime(ENGINE_VOLUME * (throttle ? 1 : 0.55), now, ENGINE_GLIDE);
+    if (engine.sampled) {
+      const sample = engine.sampled;
+      sample.idle.playbackRate.setTargetAtTime(1 + revs * 1.5, now, ENGINE_GLIDE);
+      sample.load.playbackRate.setTargetAtTime(0.85 + revs * 0.8, now, ENGINE_GLIDE);
+      const mix = Math.min(1, pressure * 0.85 + speed * 0.15);
+      sample.idleGain.gain.setTargetAtTime(Math.cos((mix * Math.PI) / 2), now, ENGINE_GLIDE);
+      sample.loadGain.gain.setTargetAtTime(Math.sin((mix * Math.PI) / 2), now, ENGINE_GLIDE);
+      engine.filter.Q.setTargetAtTime(0.7, now, ENGINE_GLIDE);
+      engine.filter.frequency.setTargetAtTime(1800 + 4200 * revs, now, ENGINE_GLIDE);
+      engine.gain.gain.setTargetAtTime(0.5 + 0.45 * pressure, now, ENGINE_GLIDE);
+    } else {
+      engine.filter.frequency.setTargetAtTime(350 + 1400 * revs + pressure * 500, now, ENGINE_GLIDE);
+      engine.gain.gain.setTargetAtTime(ENGINE_VOLUME * (0.55 + 0.45 * pressure), now, ENGINE_GLIDE);
+    }
   }
 
   engineOff(): void {
+    void this.controller.stop();
     const context = this.output.context;
     if (!context || !this.engineNodes) return;
     this.engineNodes.gain.gain.setTargetAtTime(0, context.currentTime, ENGINE_GLIDE);
@@ -65,17 +140,23 @@ export class Sound {
     filter.Q.value = 2;
     const gain = context.createGain();
     gain.gain.value = 0;
-    filter.connect(gain).connect(context.destination);
+    const audible = context.createGain();
+    audible.gain.value = this.enabled ? 1 : 0;
+    filter.connect(gain).connect(audible).connect(context.destination);
+    this.attachHaptics(context, gain);
+    const synth = context.createGain();
+    synth.connect(filter);
     // A saw for the bark of the exhaust and a square an octave below for the body.
     const oscillators = (['sawtooth', 'square'] as const).map((type) => {
       const oscillator = context.createOscillator();
       oscillator.type = type;
       oscillator.frequency.value = ENGINE_IDLE_HERTZ;
-      oscillator.connect(filter);
+      oscillator.connect(synth);
       oscillator.start();
       return oscillator;
     });
-    this.engineNodes = { oscillators, filter, gain };
+    this.engineNodes = { oscillators, filter, gain, audible, synth, sampled: null };
+    this.attachSample(context, this.engineNodes);
     return this.engineNodes;
   }
 

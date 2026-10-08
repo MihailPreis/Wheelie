@@ -1,82 +1,96 @@
-import type { Input } from '../game/input';
+import { ACTIONS, type Action, type Input } from '../game/input';
+import { controlIcon } from './control-icons';
+import { STRINGS as S } from './strings';
 import './keypad.css';
 
-/**
- * The on-screen keypad of the Android port: a 3×3 grid standing in for the digits 1–9 of a phone
- * keypad (`KeyboardController`). Shown only while touch is the device in use.
- */
+/** Four riding buttons: lean on the left, throttle and brake on the right. */
 export class Keypad {
-  readonly element: HTMLDivElement;
-  private readonly buttons: HTMLDivElement[] = [];
-  private readonly grid: HTMLDivElement;
+  readonly element = document.createElement('div');
+  private readonly buttons = new Map<Action, HTMLButtonElement>();
+  private readonly pointers = new Set<number>();
   vibrate = true;
-  /** Called with the digit (1–9) each time a button is pressed. */
-  onPress: ((digit: number) => void) | null = null;
+  onPress: ((action: Action) => void) | null = null;
 
   constructor(private readonly input: Input) {
-    this.element = document.createElement('div');
     this.element.className = 'keypad';
     this.element.hidden = true;
-    this.grid = document.createElement('div');
-    this.grid.className = 'keypad-grid';
-    for (let i = 0; i < 9; i++) {
-      const button = document.createElement('div');
-      button.className = 'keypad-button';
-      this.buttons.push(button);
-      this.grid.append(button);
+    for (const actions of [
+      ['leanBack', 'leanForward'],
+      ['accelerate', 'brake'],
+    ] as const) {
+      const group = document.createElement('div');
+      group.className = 'keypad-group';
+      for (const action of actions) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'keypad-button';
+        button.setAttribute('aria-label', S.actions[ACTIONS.indexOf(action)] ?? action);
+        button.append(controlIcon(action));
+        this.buttons.set(action, button);
+        group.append(button);
+      }
+      this.element.append(group);
     }
-    this.element.append(this.grid);
-
     this.element.addEventListener('pointerdown', (event) => {
+      const action = this.actionAt(event);
+      if (!action) return;
+      this.pointers.add(event.pointerId);
       this.element.setPointerCapture(event.pointerId);
-      const digit = this.digitAt(event);
-      this.input.touch(event.pointerId, digit);
-      this.onPress?.(digit);
-      // Browsers reject vibration before the first completed tap.
+      this.input.touchAction(event.pointerId, action);
+      this.onPress?.(action);
       if (this.vibrate && navigator.userActivation?.hasBeenActive) navigator.vibrate?.(10);
       this.refresh();
       event.preventDefault();
     });
     this.element.addEventListener('pointermove', (event) => {
-      if (!this.element.hasPointerCapture(event.pointerId)) return;
-      this.input.touch(event.pointerId, this.digitAt(event));
+      if (!this.pointers.has(event.pointerId)) return;
+      this.input.touchAction(event.pointerId, this.actionAt(event));
       this.refresh();
     });
     const end = (event: PointerEvent) => {
+      this.pointers.delete(event.pointerId);
       this.input.touchEnd(event.pointerId);
       this.refresh();
     };
     this.element.addEventListener('pointerup', end);
     this.element.addEventListener('pointercancel', end);
+    this.element.addEventListener('lostpointercapture', end);
     this.element.addEventListener('contextmenu', (event) => event.preventDefault());
   }
 
-  /** The digit under a pointer; positions in the padding count as the nearest button. */
-  private digitAt(event: PointerEvent): number {
-    const rect = this.grid.getBoundingClientRect();
-    const cell = (position: number, size: number) => Math.max(0, Math.min(2, Math.floor((position / size) * 3)));
-    const column = cell(event.clientX - rect.left, rect.width);
-    const row = cell(event.clientY - rect.top, rect.height);
-    return row * 3 + column + 1;
+  private actionAt(event: PointerEvent): Action | null {
+    for (const [action, button] of this.buttons) {
+      const box = button.getBoundingClientRect();
+      if (
+        event.clientX >= box.left &&
+        event.clientX < box.right &&
+        event.clientY >= box.top &&
+        event.clientY < box.bottom
+      )
+        return action;
+    }
+    return null;
   }
 
   private refresh(): void {
-    const pressed = this.input.pressedDigits;
-    this.buttons.forEach((button, index) => {
-      button.classList.toggle('pressed', pressed.has(index + 1));
-    });
+    for (const [action, button] of this.buttons) {
+      const pressed = this.input.pressedTouchActions.has(action);
+      button.classList.toggle('pressed', pressed);
+      button.setAttribute('aria-pressed', String(pressed));
+    }
   }
 
   set visible(visible: boolean) {
     this.element.hidden = !visible;
-    if (!visible) this.refresh();
+    if (!visible) {
+      for (const pointer of this.pointers) this.input.touchEnd(pointer);
+      this.pointers.clear();
+    }
+    this.refresh();
   }
-
   get visible(): boolean {
     return !this.element.hidden;
   }
-
-  /** Height in CSS pixels while shown, 0 otherwise. */
   get height(): number {
     return this.element.hidden ? 0 : this.element.getBoundingClientRect().height;
   }

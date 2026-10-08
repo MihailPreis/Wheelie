@@ -5,7 +5,9 @@ import { Sound } from './audio/sound';
 import { APP_NAME, resolveShareBaseUrl } from './config';
 import { Drafts } from './editor/drafts';
 import { Editor } from './editor/editor';
+import { DualSense } from './game/dualsense';
 import { Game } from './game/game';
+import { setEnhancedGamepadSource } from './game/gamepads';
 import { Input } from './game/input';
 import { Library } from './mods/library';
 import { buildPack, ORIGINAL_PACK_ID, type Pack } from './mods/pack';
@@ -137,7 +139,9 @@ async function main(): Promise<void> {
   const drafts = new Drafts();
   const output = new AudioOutput();
   const music = new Music(output, `${base}assets/audio/go.ogg`);
-  const sound = new Sound(output);
+  const controller = new DualSense();
+  setEnhancedGamepadSource(() => controller.gamepad);
+  const sound = new Sound(output, controller, `${base}assets/audio/motorcycle.mp3`);
   game.audio = sound;
 
   const menuButton = element('button', 'menu-button');
@@ -207,6 +211,8 @@ async function main(): Promise<void> {
     else if (event.code === 'KeyF' && !event.repeat && !(event.target instanceof HTMLInputElement)) toggleFullscreen();
   });
   window.addEventListener('keyup', (event) => input.keyUp(event.code));
+  window.addEventListener('gamepadconnected', () => input.gamepadConnected());
+  input.gamepadConnected();
   window.addEventListener('pointerdown', (event) => {
     music.unlock();
     // A finger anywhere switches to touch controls.

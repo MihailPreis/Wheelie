@@ -2,6 +2,7 @@ import { BodyIndex } from '../core/physics';
 import type { Pose } from '../core/sim';
 import { BODY_RADII, type Terrain } from '../core/terrain';
 import type { Animator } from './animator';
+import { angleOf } from './geometry';
 import type { Sprite, Sprites } from './sprites';
 
 /**
@@ -110,14 +111,6 @@ function approxLength(x: number, y: number): number {
   const ax = Math.abs(x);
   const ay = Math.abs(y);
   return (64448 / ONE) * Math.max(ax, ay) + (28224 / ONE) * Math.min(ax, ay);
-}
-
-/** Angle of (x, y) measured from the +y axis, in radians (`FPMath._ifIII`). */
-function angleOf(x: number, y: number): number {
-  if (Math.abs(y) < 3) return ((x <= 0 ? -1 : 1) * Math.PI) / 2;
-  const angle = Math.atan(x / y);
-  if (x > 0) return y > 0 ? angle : Math.PI + angle;
-  return y > 0 ? angle : angle - Math.PI;
 }
 
 const toDegrees = (radians: number) => (radians * 180) / Math.PI;

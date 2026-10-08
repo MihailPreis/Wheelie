@@ -32,6 +32,13 @@ the Android port by its authors.
 The file is the original Ogg Vorbis, unmodified: it is authored to loop seamlessly, and re-encoding
 or converting it to MP3 would add a gap at the loop point.
 
+## Engine recording
+
+`public/assets/audio/motorcycle.mp3` is the user-supplied
+`motorcycle-1000-cc-engine-start-idle.mp3`, copied without re-encoding. The original download
+source and licence have not been supplied. Runtime loop selection and playback are described
+in [dualsense.md](dualsense.md).
+
 ## Brand
 
 `public/assets/brand/wordmark.svg` and `public/favicon.svg` are this project's own logo. The letters are

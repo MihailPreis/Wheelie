@@ -19,6 +19,10 @@ export interface Settings {
   music: boolean;
   /** Engine and effects. */
   sound: boolean;
+  analogTriggers: boolean;
+  engineHaptics: boolean;
+  /** 0 off, 1 light, 2 medium, 3 firm. */
+  triggerResistance: number;
   /** Three characters, A–Z or space, entered for the high score tables. */
   name: string;
 }
@@ -38,6 +42,9 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   ghost: true,
   music: true,
   sound: true,
+  analogTriggers: false,
+  engineHaptics: true,
+  triggerResistance: 1,
   name: DEFAULT_NAME,
 };
 
@@ -64,11 +71,19 @@ export function loadSettings(): Settings {
     'ghost',
     'music',
     'sound',
+    'analogTriggers',
+    'engineHaptics',
   ] as const) {
     if (typeof stored[key] === 'boolean') settings[key] = stored[key];
   }
   if (stored.keyset === 0 || stored.keyset === 1 || stored.keyset === 2) settings.keyset = stored.keyset;
   if (stored.screen === 1 || stored.screen === 2) settings.screen = stored.screen;
+  if (
+    Number.isInteger(stored.triggerResistance) &&
+    (stored.triggerResistance as number) >= 0 &&
+    (stored.triggerResistance as number) <= 3
+  )
+    settings.triggerResistance = stored.triggerResistance as number;
   settings.name = normalizeName(stored.name);
   return settings;
 }

@@ -122,7 +122,12 @@ const MENU_KEYS: Readonly<Record<string, MenuKey>> = {
   Escape: 'back',
   Backspace: 'back',
 };
-const KEYPAD_KEYS: Readonly<Record<number, MenuKey>> = { 2: 'up', 8: 'down', 4: 'left', 6: 'right', 5: 'fire' };
+const KEYPAD_KEYS: Readonly<Record<Action, MenuKey>> = {
+  accelerate: 'up',
+  brake: 'down',
+  leanBack: 'left',
+  leanForward: 'right',
+};
 const TYPING_KEYS = new Set(['ArrowUp', 'ArrowDown', 'Enter', 'NumpadEnter', 'Escape']);
 const PAUSE_KEYS = new Set(['Escape', 'KeyP']);
 
@@ -289,8 +294,8 @@ export class App {
     game.onFinish = (result) => this.finished(result);
     game.onRun = (run) => this.recordRun(run);
     input.onDeviceChange = () => this.updateKeypad();
-    keypad.onPress = (digit) => {
-      const key = KEYPAD_KEYS[digit];
+    keypad.onPress = (action) => {
+      const key = KEYPAD_KEYS[action];
       if (key && this.menu.visible) this.menuKey(key);
     };
     menuButton.addEventListener('click', () => this.pause());
@@ -308,6 +313,8 @@ export class App {
     this.game.lookAhead = s.lookAhead;
     this.game.classic = CLASSIC_SCREENS[s.screen] ?? 0;
     this.input.keyset = s.keyset;
+    this.input.analogTriggers = s.analogTriggers;
+    this.sound.controller.configure(s.engineHaptics, s.triggerResistance);
     this.keypad.vibrate = s.vibrate;
     if (this.music.enabled !== s.music) this.music.enabled = s.music;
     this.sound.enabled = s.sound;
@@ -1751,6 +1758,7 @@ export class App {
         );
       });
       items.push(
+        this.link('DualSense', this.dualSenseScreen(self)),
         {
           kind: 'action',
           label: S.controlsReset,
@@ -1763,6 +1771,80 @@ export class App {
         { kind: 'action', label: S.back, run: back },
       );
       return { title: S.controls, back, items };
+    };
+    return self;
+  }
+
+  /** Connection and feedback settings for the DualSense controller. */
+  private dualSenseScreen(parent: ScreenBuilder): ScreenBuilder {
+    const controller = this.sound.controller;
+    const self: ScreenBuilder = () => {
+      const back = () => this.open(parent);
+      const toggle = (label: string, key: 'analogTriggers' | 'engineHaptics'): MenuItem => ({
+        kind: 'option',
+        label,
+        options: ON_OFF,
+        value: this.settings[key] ? 0 : 1,
+        toggle: true,
+        change: (value) => {
+          this.settings[key] = value === 0;
+          this.input.release();
+          this.saveSettings();
+          this.refresh();
+        },
+      });
+      const status = !controller.supported
+        ? S.dualSenseUnsupported
+        : controller.error
+          ? controller.connected
+            ? S.dualSenseOutputFailed
+            : S.dualSenseFailed
+          : controller.connected
+            ? controller.pcmAvailable
+              ? S.dualSenseBluetooth
+              : S.dualSenseConnected
+            : S.dualSenseDisconnected;
+      controller.onChange = () => {
+        if (this.current === self) this.refresh();
+      };
+      return {
+        title: 'DualSense',
+        back,
+        items: [
+          { kind: 'text', html: status },
+          { kind: 'text', html: S.dualSenseHelp },
+          ...(controller.supported
+            ? [
+                {
+                  kind: 'action' as const,
+                  label: S.dualSenseConnect,
+                  run: () => {
+                    const connecting = controller.connect();
+                    this.sound.unlock();
+                    void connecting.then((connected) => {
+                      if (connected) this.input.gamepadConnected();
+                      if (this.current === self) this.refresh();
+                    });
+                  },
+                },
+              ]
+            : []),
+          toggle(S.analogTriggers, 'analogTriggers'),
+          toggle(S.engineHaptics, 'engineHaptics'),
+          {
+            kind: 'option',
+            label: S.triggerResistance,
+            options: S.triggerStrengths,
+            value: this.settings.triggerResistance,
+            change: (value) => {
+              this.settings.triggerResistance = value;
+              this.saveSettings();
+              this.refresh();
+            },
+          },
+          { kind: 'action', label: S.back, run: back },
+        ],
+      };
     };
     return self;
   }

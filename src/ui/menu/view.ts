@@ -107,7 +107,7 @@ export class MenuView {
     const wanted = previous ?? this.remembered.get(screen.title) ?? -1;
     this.select(this.rows[wanted] ? wanted : this.rows.findIndex((row) => row !== null));
     if (!keepSelection) this.list.scrollTop = 0;
-    this.revealSelected();
+    if (!screen.text) this.revealSelected();
   }
 
   private renderItem(item: MenuItem, index: number): HTMLElement {

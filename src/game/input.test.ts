@@ -2,6 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { defaultBindings, Input, parseBindings, rebind } from './input';
 
 describe('Input', () => {
+  it('combines dedicated touch buttons independently of the digit keyset', () => {
+    const input = new Input();
+    for (const keyset of [0, 1, 2]) {
+      input.keyset = keyset;
+      input.touchAction(1, 'accelerate');
+      input.touchAction(2, 'leanForward');
+      expect(input.read()).toEqual({ throttle: 1, lean: 1 });
+      input.touchAction(2, null);
+      expect(input.read()).toEqual({ throttle: 1, lean: 0 });
+      input.release();
+      expect(input.read()).toEqual({ throttle: 0, lean: 0 });
+    }
+  });
   it('maps arrows and WASD', () => {
     const input = new Input();
     input.keyDown('ArrowUp');

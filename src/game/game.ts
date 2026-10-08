@@ -83,7 +83,7 @@ const isFinished = (status: Status) => status === Status.Finished || status === 
 /** Sounds of a run. Nothing here feeds back into the simulation. */
 export interface GameAudio {
   /** Called every frame while the player is riding; `speed` is 0…1. */
-  engine(speed: number, throttle: boolean): void;
+  engine(speed: number, throttle: number): void;
   engineOff(): void;
   crash(): void;
   finish(wheelie: boolean): void;
@@ -489,7 +489,8 @@ export class Game {
       return;
     }
     const speed = Math.hypot(this.current.frameVx, this.current.frameVy) / ENGINE_TOP_SPEED;
-    audio.engine(Math.min(1, speed), this.throttle && this.phase === 'riding');
+    const pressure = this.playback ? (this.throttle ? 1 : 0) : this.input.throttlePressure;
+    audio.engine(Math.min(1, speed), this.phase === 'riding' ? pressure : 0);
   }
 
   /** Lowers the rendering resolution when frames have been slow for a whole window. */

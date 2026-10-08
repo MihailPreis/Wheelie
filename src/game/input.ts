@@ -4,6 +4,8 @@
  * which device was used.
  */
 
+import { type ControllerPad, gamepads } from './gamepads';
+
 export interface Controls {
   throttle: number;
   lean: number;
@@ -20,7 +22,7 @@ const LEAN_FORWARD: Contribution = [0, 1];
 
 /**
  * What the digits 0–9 do in each of the original's three keysets (`GameView.m_maaaB`). The
- * on-screen keypad presses the digits 1–9, so it follows the selected keyset too.
+ * digit keys follow the selected keyset. Dedicated touch buttons use semantic actions instead.
  */
 export const KEYSETS: readonly (readonly Contribution[])[] = [
   [
@@ -150,12 +152,12 @@ export const PAD = {
 const TRIGGER_THRESHOLD = 0.3;
 const STICK_DEAD_ZONE = 0.35;
 
-const buttonDown = (pad: Gamepad, index: number) =>
+const buttonDown = (pad: ControllerPad, index: number) =>
   (pad.buttons[index]?.pressed ?? false) || (pad.buttons[index]?.value ?? 0) > TRIGGER_THRESHOLD;
 
 /** The lowest-numbered button held on any gamepad, or null. */
 export function heldButton(): number | null {
-  const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+  const pads = gamepads();
   for (const pad of pads) {
     if (!pad?.connected) continue;
     const index = pad.buttons.findIndex((_, button) => buttonDown(pad, button));
@@ -166,15 +168,20 @@ export function heldButton(): number | null {
 
 /** Whether the gamepad in use names its buttons the PlayStation way. */
 export function isPlayStationPad(): boolean {
-  const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+  const pads = gamepads();
   return [...pads].some(
     (pad) => pad?.connected && /dualsense|dualshock|playstation|054c|wireless controller/i.test(pad.id),
   );
 }
 
 export class Input {
-  /** 0–2: which of the original keysets the digit keys and the on-screen keypad use. */
+  /** 0–2: which of the original keysets the digit keys use. */
   keyset = 0;
+  analogTriggers = false;
+  /** Continuous gas demand for engine audio, before quantisation into replay ticks. */
+  throttlePressure = 0;
+  private throttleRemainder = 0;
+  private throttleDirection = 0;
   private bound = defaultBindings();
   private keyActions = new Map<string, Contribution>();
 
@@ -199,6 +206,7 @@ export class Input {
 
   private readonly keys = new Set<string>();
   private readonly touchDigits = new Map<number, number>();
+  private readonly touchActions = new Map<number, Action>();
   private padActive = false;
 
   private use(device: InputDevice): void {
@@ -228,6 +236,18 @@ export class Input {
 
   touchEnd(pointerId: number): void {
     this.touchDigits.delete(pointerId);
+    this.touchActions.delete(pointerId);
+  }
+
+  /** Semantic touch buttons are independent of the digit keyset. */
+  touchAction(pointerId: number, action: Action | null): void {
+    if (action === null) this.touchActions.delete(pointerId);
+    else this.touchActions.set(pointerId, action);
+    this.use('touch');
+  }
+
+  get pressedTouchActions(): ReadonlySet<Action> {
+    return new Set(this.touchActions.values());
   }
 
   /** Digits currently held on the keypad, for highlighting. */
@@ -239,6 +259,14 @@ export class Input {
   release(): void {
     this.keys.clear();
     this.touchDigits.clear();
+    this.touchActions.clear();
+    this.throttleRemainder = 0;
+    this.throttleDirection = 0;
+    this.throttlePressure = 0;
+  }
+
+  gamepadConnected(): void {
+    if (gamepads().some((pad) => pad.connected)) this.use('gamepad');
   }
 
   /** Reads the controls for the coming tick. Gamepads have no events, so they are polled here. */
@@ -258,23 +286,42 @@ export class Input {
       add(this.keyActions.get(code) ?? (digit === null ? undefined : keyset[digit]));
     }
     for (const digit of this.touchDigits.values()) add(keyset[digit]);
+    for (const action of this.touchActions.values()) add(CONTRIBUTIONS[action]);
 
     const pad = this.readGamepads();
     throttle += pad.throttle;
     lean += pad.lean;
-    return { throttle: Math.sign(throttle), lean: Math.sign(lean) };
+    this.throttlePressure = Math.max(0, Math.min(1, throttle));
+    if (!this.analogTriggers) return { throttle: Math.sign(throttle), lean: Math.sign(lean) };
+    // Pulse density gives proportional drive without changing integer physics or replay inputs.
+    const direction = Math.sign(throttle);
+    if (direction !== this.throttleDirection) this.throttleRemainder = 0;
+    this.throttleDirection = direction;
+    this.throttleRemainder += Math.min(1, Math.abs(throttle));
+    const pulse = this.throttleRemainder >= 1 - 1e-9;
+    if (pulse) this.throttleRemainder = Math.max(0, this.throttleRemainder - 1);
+    return { throttle: pulse ? direction : 0, lean: Math.sign(lean) };
   }
 
   private readGamepads(): Controls {
     let throttle = 0;
     let lean = 0;
-    const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+    const pads = gamepads();
     for (const pad of pads) {
       if (!pad?.connected) continue;
       // Triggers and sticks are analogue; the game is not, so they act past a threshold.
       const held = (action: Action) => this.bound.buttons[action].some((index) => buttonDown(pad, index));
-      if (held('accelerate')) throttle++;
-      if (held('brake')) throttle--;
+      const pressure = (action: Action) =>
+        Math.max(
+          0,
+          ...this.bound.buttons[action].map((index) => {
+            if (!this.analogTriggers || (index !== PAD.leftTrigger && index !== PAD.rightTrigger))
+              return buttonDown(pad, index) ? 1 : 0;
+            const value = pad.buttons[index]?.value ?? 0;
+            return Number.isFinite(value) ? Math.max(0, Math.min(1, (value - 0.05) / 0.95)) : 0;
+          }),
+        );
+      throttle += pressure('accelerate') - pressure('brake');
       const stick = pad.axes[0] ?? 0;
       if (stick > STICK_DEAD_ZONE || held('leanForward')) lean++;
       if (stick < -STICK_DEAD_ZONE || held('leanBack')) lean--;

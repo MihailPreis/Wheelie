@@ -1,4 +1,5 @@
 /** Menu navigation from a gamepad. Gamepads have no events, so this is polled once a frame. */
+import { gamepads } from './gamepads';
 
 export type MenuPadAction = 'up' | 'down' | 'left' | 'right' | 'fire' | 'back' | 'pause';
 /** The second group is of use only where there is more to do than walk a menu, as in the editor. */
@@ -37,7 +38,7 @@ export class GamepadNavigator {
   /** Returns the actions that fire on this frame. */
   poll(now: number): PadAction[] {
     const down = new Set<PadAction>();
-    const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+    const pads = gamepads();
     for (const pad of pads) {
       if (!pad?.connected) continue;
       for (const [index, action] of BUTTONS) {
