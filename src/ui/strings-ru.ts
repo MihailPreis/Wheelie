@@ -92,7 +92,7 @@ export const RU: Strings = {
   gifRendering: (percent) => `Готовлю GIF.. ${percent}%`,
   gifSaved: (megabytes) => `GIF сохранён (${megabytes} МБ).`,
   exportFailed: 'В этом браузере так не получилось.',
-  openReplayFile: 'Открыть файл повтора',
+  openReplayFile: 'Открыть файл повтора или заездов',
   openingReplay: 'Открываю повтор..',
   ownLevels: 'Свои уровни',
   linkCopied: (length) => `Ссылка скопирована (символов: ${length}).`,
@@ -280,6 +280,11 @@ export const RU: Strings = {
   controlsReset: 'Сбросить управление',
   keyboardPause: 'Пауза: Esc, P',
   gamepadExtra: (pause) => `Левый стик тоже наклоняет. Пауза: ${pause}`,
+  saveAllRuns: 'Сохранить все заезды в файл',
+  backupDamaged: 'Этот файл заездов не читается.',
+  backupReading: (done, total) => `Проверка заездов.. ${done} из ${total}`,
+  backupRead: (taken, known, skipped) =>
+    `Добавлено заездов: ${taken}, уже было: ${known}${skipped > 0 ? `, не подошло: ${skipped}` : ''}. Прогресс, рекорды и достижения пересчитаны по ним.`,
 
   crashed: 'Авария',
   wheelie: 'Wheelie!',

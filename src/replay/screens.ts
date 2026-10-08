@@ -7,6 +7,7 @@ import { encodeQr } from '../export/qr';
 import { Outcome } from '../formats/replay';
 import { formatScoreTime } from '../game/highscores';
 import { LEAGUE_NAMES, LEVEL_NAMES } from '../game/progress';
+import { encodeProfile } from '../profile/profile';
 import type { SceneOptions } from '../render/scene';
 import type { Sprites } from '../render/sprites';
 import type { MenuItem, MenuScreen } from '../ui/menu/view';
@@ -179,6 +180,7 @@ export class ReplayScreens {
         },
       });
     }
+    if (this.replays.length > 0) items.push({ kind: 'action', label: S.saveAllRuns, run: () => this.saveAll() });
     items.push({ kind: 'action', label: S.openReplayFile, run: () => this.pickFile() });
     items.push({ kind: 'action', label: S.back, run: back });
     return { title: S.myRuns, back, items };
@@ -451,10 +453,17 @@ export class ReplayScreens {
     }
   }
 
+  /** Every run in one file, to carry to another browser or keep against the day this one is wiped. */
+  private saveAll(): void {
+    const bytes = encodeProfile(this.replays.map((replay) => replay.bytes));
+    const day = new Date().toISOString().slice(0, 10);
+    download(new Blob([Uint8Array.from(bytes)], { type: 'application/octet-stream' }), `wheelie-runs-${day}.wheelie`);
+  }
+
   private pickFile(): void {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.gdr';
+    input.accept = '.gdr,.wheelie';
     input.addEventListener('change', () => {
       const file = input.files?.[0];
       if (file) void file.arrayBuffer().then((buffer) => this.host.importReplay(new Uint8Array(buffer)));

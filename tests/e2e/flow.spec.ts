@@ -234,7 +234,7 @@ test('a run is recorded and listed under My runs', async ({ page }) => {
   await press(page, 'Escape');
   await pick(page, 'My runs');
   await expect(title(page)).toHaveText('My runs');
-  await expect(items(page)).toHaveCount(4);
+  await expect(items(page)).toHaveCount(5);
   await expect(items(page).nth(1)).toContainText('100cc');
 
   // It is still there after a reload, and can be deleted.
@@ -242,7 +242,7 @@ test('a run is recorded and listed under My runs', async ({ page }) => {
   await page.keyboard.press('Enter');
   await expect(title(page)).toHaveText('Main', { timeout: 10_000 });
   await pick(page, 'My runs');
-  await expect(items(page)).toHaveCount(4);
+  await expect(items(page)).toHaveCount(5);
   await press(page, 'ArrowDown', 'Enter');
   await expect(texts(page).nth(1)).toContainText('Result');
 
@@ -356,7 +356,7 @@ test('a run shared as a link opens as a replay in a fresh browser', async ({ pag
   await visitor.keyboard.press('Escape');
   await expect(visitor.locator('.menu-title')).toHaveText('Main');
   await pick(visitor, 'My runs');
-  await expect(visitor.locator('.menu-item .menu-label')).toHaveCount(4);
+  await expect(visitor.locator('.menu-item .menu-label')).toHaveCount(5);
 
   // Embedded in another page, the replay plays but cannot be left and is not kept.
   const guest = await (await browser.newContext()).newPage();
@@ -563,7 +563,10 @@ test('a browser set to Russian gets the game in Russian', async ({ browser }) =>
   await context.close();
 });
 
-test('achievements are secret until earned, and are announced at the end of the run', async ({ page }) => {
+test('achievements are secret until earned, announced at the end of the run and restored from a backup', async ({
+  page,
+  browser,
+}) => {
   await pick(page, 'Achievements');
   await expect(texts(page).first()).toHaveText('0 of 17 earned.');
   await expect(page.locator('.menu-text', { hasText: '???' })).toHaveCount(17);
@@ -590,4 +593,46 @@ test('achievements are secret until earned, and are announced at the end of the 
   await expect(page.locator('.menu-text', { hasText: 'Who needs brakes' })).toContainText(
     'Finish a track without braking.',
   );
+
+  // All runs go into one file. In a browser that has never seen the game, that file brings back
+  // the runs and, worked out from them, the unlocked track, the high score and the achievement.
+  await press(page, 'Escape');
+  await pick(page, 'My runs');
+  const [download] = await Promise.all([page.waitForEvent('download'), pick(page, 'Save all runs to a file')]);
+  expect(download.suggestedFilename()).toMatch(/^wheelie-runs-\d{4}-\d\d-\d\d\.wheelie$/);
+  const backup = [...readFileSync(await download.path())];
+
+  const fresh = await (await browser.newContext()).newPage();
+  await fresh.goto('/');
+  await fresh.keyboard.press('Enter');
+  await expect(fresh.locator('.menu-title')).toHaveText('Main', { timeout: 10_000 });
+  await fresh.evaluate((bytes) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([new Uint8Array(bytes)], 'runs.wheelie'));
+    window.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer }));
+  }, backup);
+  await expect(fresh.locator('.menu-text').first()).toContainText('1 runs added, 0 were here already', {
+    timeout: 15_000,
+  });
+  await expect(fresh.locator('.toast')).toHaveText('Achievement: Who needs brakes');
+  await pick(fresh, 'Ok');
+  await expect(fresh.locator('.menu-item .menu-label', { hasText: 'Intro' })).toContainText('best');
+  await fresh.keyboard.press('Escape');
+  await pick(fresh, 'Play Menu');
+  const trackOption = fresh.locator('.menu-item', { hasText: 'Track' });
+  await trackOption.click();
+  await expect(fresh.locator('.menu-item').nth(1).locator('.menu-lock')).toHaveCount(0);
+  await expect(fresh.locator('.menu-item').nth(2).locator('.menu-lock')).toHaveCount(1);
+  await fresh.keyboard.press('Escape');
+  await pick(fresh, 'High Scores');
+  await expect(fresh.locator('.menu-text').nth(1)).toContainText('1. AAA');
+
+  // Reading the same file again adds nothing.
+  await fresh.evaluate((bytes) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([new Uint8Array(bytes)], 'runs.wheelie'));
+    window.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer }));
+  }, backup);
+  await expect(fresh.locator('.menu-text').first()).toContainText('0 runs added, 1 were here already');
+  await fresh.close();
 });

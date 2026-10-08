@@ -73,6 +73,14 @@ export function countRun(): number {
   return stored.runs;
 }
 
+/** Adds runs made elsewhere, as when a backup is read. Returns the total. */
+export function addRuns(count: number): number {
+  const stored = load();
+  stored.runs += Math.max(0, Math.floor(count));
+  writeJson(KEY, stored);
+  return stored.runs;
+}
+
 export interface RunContext {
   /** 0 easy, 1 medium, 2 hard. */
   level: number;

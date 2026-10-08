@@ -1,6 +1,7 @@
 import {
   ACHIEVEMENTS,
   type AchievementId,
+  addRuns,
   award,
   countRun,
   earnedAchievements,
@@ -67,6 +68,7 @@ import type { Library } from './mods/library';
 import { buildPack, ORIGINAL_PACK_ID, type Pack } from './mods/pack';
 import { ModsScreens, type ScreenBuilder } from './mods/screens';
 import type { PlayerControls, TimelineMark } from './player/controls';
+import { decodeProfile, isProfile, MAX_PROFILE_BYTES } from './profile/profile';
 import type { Sprites } from './render/sprites';
 import { ReplayScreens } from './replay/screens';
 import { decodeFragment, decodeTrackFragment, isReplayFragment } from './replay/share';
@@ -1001,6 +1003,7 @@ export class App {
    */
   async importReplay(bytes: Uint8Array): Promise<void> {
     if (this.playing && !this.menu.visible) return;
+    if (isProfile(bytes)) return this.importProfile(bytes);
     const back: ScreenBuilder = () => this.mainMenu();
     const fail = (text: string) => this.alert(S.myRuns, text, () => this.open(back));
     this.open(() => ({ title: S.myRuns, back: null, items: [{ kind: 'text', html: S.openingReplay }] }));
@@ -1041,6 +1044,149 @@ export class App {
       });
     }
     this.startWatching(replay, found.track, back, fail, stored);
+  }
+
+  /**
+   * Reads a backup of runs. Each run is checked by riding it again and added to the player's own;
+   * the progress, high scores and achievements those runs amount to are then worked out from
+   * them, in the order they were made — the file itself says nothing about any of that.
+   */
+  private async importProfile(bytes: Uint8Array): Promise<void> {
+    const done = () => void this.replays.openList();
+    const say = (text: string) =>
+      this.open(() => ({ title: S.myRuns, back: null, items: [{ kind: 'text', html: text }] }));
+    let files: Uint8Array[];
+    try {
+      files = decodeProfile(bytes, MAX_REPLAY_BYTES);
+    } catch {
+      this.alert(S.myRuns, S.backupDamaged, done);
+      return;
+    }
+    say(S.backupReading(0, files.length));
+
+    const kept = await this.replayStore.list();
+    const known = new Set(kept.map((stored) => stored.bytes.join(',')));
+    const taken: { bytes: Uint8Array; replay: Replay; track: Track; packName: string; pack: Pack | null }[] = [];
+    let skipped = 0;
+    for (const [index, file] of files.entries()) {
+      if (index % 5 === 4) {
+        say(S.backupReading(index + 1, files.length));
+        await new Promise((resolve) => setTimeout(resolve));
+      }
+      const signature = file.join(',');
+      if (known.has(signature)) continue;
+      known.add(signature);
+      try {
+        const replay = decodeReplay(file);
+        const found = await this.trackFor(replay);
+        if (typeof found === 'string' || !verifyReplay(found.track.data, replay)) throw new Error('Not a run');
+        const pack = replay.trackData
+          ? null
+          : replay.packId === ORIGINAL_PACK_ID
+            ? this.original
+            : replay.packId === this.pack.id
+              ? this.pack
+              : await this.mods.obtain(replay.packId);
+        taken.push({ bytes: file, replay, track: found.track, packName: found.packName, pack });
+      } catch {
+        skipped++;
+      }
+    }
+
+    try {
+      if (!this.dailyCandidates) {
+        const response = await fetch(`${this.baseUrl}assets/mods/daily.json`);
+        if (response.ok) this.dailyCandidates = parseCandidates(await response.json());
+      }
+    } catch {
+      // Without the list the runs on daily tracks count as ordinary runs on their packs.
+    }
+
+    taken.sort((a, b) => a.replay.date - b.replay.date);
+    /** Fastest finish so far per track and league, as the ghost each later run was up against. */
+    const fastest = new Map<string, number>();
+    for (const stored of kept) {
+      if (stored.outcome !== Outcome.Finished) continue;
+      const key = `${stored.packId}/${stored.level}/${stored.track}/${stored.league}`;
+      fastest.set(key, Math.min(fastest.get(key) ?? Infinity, stored.time));
+    }
+    const earned: AchievementId[] = [];
+    let counted = 0;
+    for (const { bytes: file, replay, track, packName, pack } of taken) {
+      const date = replay.date * 1000;
+      const day = dayOf(date);
+      const pick = this.dailyCandidates ? pickDaily(this.dailyCandidates, day) : null;
+      const daily =
+        pick?.packId === replay.packId &&
+        pick.level === replay.level &&
+        pick.track === replay.track &&
+        pick.league === replay.league;
+      const finished = replay.outcome === Outcome.Finished;
+      const key = `${replay.packId}/${replay.level}/${replay.track}/${replay.league}`;
+
+      if (daily || replay.packId === ORIGINAL_PACK_ID) {
+        counted++;
+        const facts = analyseRun(track.data, replay.league, replay.inputs);
+        earned.push(
+          ...runAchievements(facts, {
+            level: replay.level,
+            daily,
+            wheelie: replay.wheelie,
+            time: replay.time,
+            ghostTime: fastest.get(key) ?? null,
+          }),
+        );
+      }
+      if (finished) {
+        fastest.set(key, Math.min(fastest.get(key) ?? Infinity, replay.time));
+        if (daily) {
+          recordDaily(day, replay.time);
+        } else if (pack) {
+          const counts = pack.levels.map((level) => level.length);
+          const progress = loadProgress(pack.id, counts);
+          const { selectedLevel, selectedLeague } = progress;
+          const selectedTracks: Progress['selectedTracks'] = [...progress.selectedTracks];
+          completeTrack(progress, replay.level, replay.track, counts);
+          // Only what was unlocked is of interest here, not where the selection moved to.
+          saveProgress(pack.id, { ...progress, selectedLevel, selectedTracks, selectedLeague });
+          const scores = loadScores(pack.id, replay.level, replay.track);
+          addScore(scores, replay.league, normalizeName(replay.player), Math.floor(replay.time / 10));
+          saveScores(pack.id, replay.level, replay.track, scores);
+        }
+        if (replay.packId === 'file-mytracks') earned.push('ownTrack');
+      }
+      await this.replayStore.add({
+        bytes: file,
+        packId: replay.packId,
+        packName,
+        level: replay.level,
+        track: replay.track,
+        league: replay.league,
+        trackName: replay.trackName,
+        player: replay.player,
+        date,
+        outcome: replay.outcome,
+        wheelie: replay.wheelie,
+        time: replay.time,
+        ...(daily ? { daily: day } : {}),
+      });
+    }
+
+    // What follows from the whole rather than from any one run.
+    const original = this.original.levels.map((level) => level.length);
+    const progress = loadProgress(ORIGINAL_PACK_ID, original);
+    (['easyDone', 'mediumDone', 'hardDone'] as const).forEach((id, level) => {
+      if (completedCount(progress, level, original) >= (original[level] ?? 0)) earned.push(id);
+    });
+    if (progress.unlockedLeagues >= 3) earned.push('league325');
+    const streak = Math.max(0, ...taken.map(({ replay }) => dailyStreak(dayOf(replay.date * 1000))));
+    if (streak >= 3) earned.push('daily3');
+    if (streak >= 7) earned.push('daily7');
+    if (addRuns(counted) >= 100) earned.push('runs100');
+    this.fresh = [];
+    this.earn(earned);
+    this.progress = this.loadProgress(this.pack);
+    this.alert(S.myRuns, S.backupRead(taken.length, files.length - taken.length - skipped, skipped), done);
   }
 
   /** Opens the replay carried by a link's fragment, if there is one. */
@@ -1110,6 +1256,9 @@ export class App {
     if (head[0] === 0x47 && head[1] === 0x44 && head[2] === 0x52 && head[3] === 0x1a) {
       if (file.size <= MAX_REPLAY_BYTES) await this.importReplay(new Uint8Array(await file.arrayBuffer()));
       else this.alert(S.myRuns, S.replayDamaged, () => this.open(this.mainMenu));
+    } else if (isProfile(head)) {
+      if (file.size <= MAX_PROFILE_BYTES) await this.importProfile(new Uint8Array(await file.arrayBuffer()));
+      else this.alert(S.myRuns, S.backupDamaged, () => this.open(this.mainMenu));
     } else {
       await this.mods.installFile(file);
     }
