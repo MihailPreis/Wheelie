@@ -257,6 +257,9 @@ export const RU: Strings = {
   show: 'Показать',
   runFilters: ['Все заезды', 'Финиши', 'Личные рекорды', 'Этот набор трасс', 'Эта трасса'],
   personalBest: 'рекорд',
+  gifSize: 'Размер GIF',
+  gifPart: 'В GIF попадёт',
+  gifParts: ['Весь заезд', 'Первые 10 с', 'Последние 10 с'],
 
   crashed: 'Авария',
   wheelie: 'Wheelie!',

@@ -573,6 +573,7 @@ export class App {
       outcome: replay.outcome,
       wheelie: replay.wheelie,
       time: replay.time,
+      ...(this.ridingDaily && this.daily ? { daily: this.daily.day } : {}),
     });
   }
 

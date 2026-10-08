@@ -1,6 +1,9 @@
+import { TICK_MILLISECONDS } from '../core/sim';
+import { dayLabel } from '../daily/daily';
 import { type CardSize, canvasBlob, drawCard } from '../export/card';
 import { Film, type FilmSource } from '../export/film';
 import { gifSpeed, renderGif } from '../export/gif';
+import { encodeQr } from '../export/qr';
 import { Outcome } from '../formats/replay';
 import { formatScoreTime } from '../game/highscores';
 import { LEAGUE_NAMES, LEVEL_NAMES } from '../game/progress';
@@ -47,8 +50,19 @@ export interface ExportSource {
 
 /** The link service takes no larger picture. */
 const MAX_PREVIEW_BYTES = 400 * 1024;
-const GIF_WIDTH = 480;
-const GIF_HEIGHT = 270;
+const GIF_SIZES = [
+  [320, 180],
+  [480, 270],
+  [640, 360],
+] as const;
+/** The view of the animation in dp, whatever its size in pixels. */
+const GIF_VIEW = 270;
+/** Length of the "first" and "last" parts of a run, in ticks. */
+const GIF_PART_TICKS = Math.round(10_000 / TICK_MILLISECONDS);
+/** A link longer than this makes a code too fine to read off a picture. */
+const QR_LINK_VERSION = 15;
+const cardDay = (day: number) =>
+  new Date(day * 86_400_000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -100,6 +114,8 @@ export class ReplayScreens {
   private rendering: AbortController | null = null;
   private shown = PAGE;
   private filter = 0;
+  private gifSize = 1;
+  private gifPart = 0;
 
   constructor(
     private readonly host: ReplaysHost,
@@ -186,6 +202,7 @@ export class ReplayScreens {
           field(S.levels, `${replay.packName} - ${LEVEL_NAMES[replay.level] ?? ''}`),
           field(S.rider, replay.player),
           field(S.date, when(replay.date)),
+          ...(replay.daily === undefined ? [] : [field(S.daily, dayLabel(replay.daily))]),
           { kind: 'space', size: 10 },
           { kind: 'action', label: S.watch, run: () => this.host.watch(replay, self) },
           { kind: 'action', label: S.race, run: () => this.host.race(replay, self) },
@@ -296,6 +313,26 @@ export class ReplayScreens {
         items.push({ kind: 'action', label: S.copyImage, run: image('wide', true) });
       }
       items.push(
+        {
+          kind: 'option',
+          label: S.gifSize,
+          options: GIF_SIZES.map(([width, height]) => `${width}x${height}`),
+          value: this.gifSize,
+          change: (value) => {
+            this.gifSize = value;
+            say(status);
+          },
+        },
+        {
+          kind: 'option',
+          label: S.gifPart,
+          options: S.gifParts,
+          value: this.gifPart,
+          change: (value) => {
+            this.gifPart = value;
+            say(status);
+          },
+        },
         { kind: 'action', label: S.saveGif, run: () => void this.gif(replay, say) },
         { kind: 'action', label: S.saveFile, run: () => this.saveFile(replay) },
         { kind: 'action', label: S.back, run: back },
@@ -345,6 +382,10 @@ export class ReplayScreens {
     const source = await this.host.exportSource(replay);
     if (typeof source === 'string') return source;
     const film = new Film(this.host.sprites, source.film, { ...this.host.sceneOptions(), dimmed: false }, 300);
+    // The code leads to the replay itself while its link is short enough, and to the game otherwise.
+    const text = new TextEncoder();
+    const link = await encodeLink(this.host.shareBaseUrl, Uint8Array.from(replay.bytes)).catch(() => '');
+    const qr = (link && encodeQr(text.encode(link), QR_LINK_VERSION)) || encodeQr(text.encode(this.host.shareBaseUrl));
     const canvas = drawCard(
       film,
       await loadImage(this.host.logoUrl),
@@ -360,6 +401,8 @@ export class ReplayScreens {
           .replace(/^https?:\/\//, '')
           .replace(/[#?].*$/, '')
           .replace(/\/$/, ''),
+        daily: replay.daily === undefined ? null : cardDay(replay.daily),
+        qr,
       },
       size,
     );
@@ -377,15 +420,20 @@ export class ReplayScreens {
     this.rendering = rendering;
     try {
       const options = { ...this.host.sceneOptions(), dimmed: false };
-      const film = new Film(this.host.sprites, source.film, options, GIF_HEIGHT);
-      const speed = gifSpeed(film.duration);
+      const [width, height] = GIF_SIZES[this.gifSize] ?? GIF_SIZES[1];
+      const film = new Film(this.host.sprites, source.film, options, GIF_VIEW);
+      const from = this.gifPart === 2 ? Math.max(0, film.length - GIF_PART_TICKS) : 0;
+      const to = this.gifPart === 1 ? Math.min(film.length, GIF_PART_TICKS) : film.length;
+      const speed = gifSpeed((to - from) * TICK_MILLISECONDS);
       say(S.gifRendering(0));
       const blob = await renderGif(film, {
-        width: GIF_WIDTH,
-        height: GIF_HEIGHT,
+        width,
+        height,
         speed,
+        from,
+        to,
         caption: `${replay.trackName} - ${LEAGUE_NAMES[replay.league] ?? ''} - ${source.packName} - ${speed}x`,
-        paletteSample: new Film(this.host.sprites, source.film, options, GIF_HEIGHT),
+        paletteSample: new Film(this.host.sprites, source.film, options, GIF_VIEW),
         signal: rendering.signal,
         onProgress: (done) => say(S.gifRendering(Math.round(done * 100))),
       });

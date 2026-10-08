@@ -1,5 +1,6 @@
 import { GAME_FONT } from '../render/hud';
 import type { Film } from './film';
+import type { QrCode } from './qr';
 
 /** What a result card says about a run. */
 export interface CardInfo {
@@ -15,6 +16,10 @@ export interface CardInfo {
   wheelie: boolean;
   /** Address of the game, printed small. */
   site: string;
+  /** Set for a run on the daily track: the day, as text. */
+  daily: string | null;
+  /** A code leading to the replay or to the game, drawn in a corner of the picture. */
+  qr: QrCode | null;
 }
 
 export const CARD_SIZES = {
@@ -55,6 +60,25 @@ export function drawCard(film: Film, logo: CanvasImageSource, info: CardInfo, si
   film.draw(ctx, width, sceneHeight, sceneHeight / 300, film.seekFinish(), false);
   ctx.restore();
 
+  if (info.qr) {
+    // No finer than three pixels a module, or cameras stop reading it off a screen.
+    const quiet = 3;
+    const module = Math.max(3, Math.floor((230 * unit) / (info.qr.size + quiet * 2)));
+    const side = (info.qr.size + quiet * 2) * module;
+    const left = width - side - Math.round(24 * unit);
+    const upper = Math.round(24 * unit);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(left, upper, side, side);
+    ctx.fillStyle = '#000';
+    for (let y = 0; y < info.qr.size; y++) {
+      for (let x = 0; x < info.qr.size; x++) {
+        if (info.qr.modules[y * info.qr.size + x]) {
+          ctx.fillRect(left + (x + quiet) * module, upper + (y + quiet) * module, module, module);
+        }
+      }
+    }
+  }
+
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, sceneHeight, width, panel);
   ctx.fillStyle = '#29aa27';
@@ -81,7 +105,17 @@ export function drawCard(film: Film, logo: CanvasImageSource, info: CardInfo, si
   ctx.fillText(shorten(ctx, info.track, column), margin, top + 156 * unit);
   ctx.fillStyle = '#666';
   ctx.font = `${Math.round(26 * unit)}px ${GAME_FONT}`;
-  ctx.fillText(shorten(ctx, `${info.category} - ${info.pack}`, column), margin, top + 192 * unit);
+  const details = `${info.category} - ${info.pack}`;
+  if (info.daily) {
+    const label = `Daily track ${info.daily} - `;
+    ctx.fillStyle = '#29aa27';
+    ctx.fillText(label, margin, top + 192 * unit);
+    const used = ctx.measureText(label).width;
+    ctx.fillStyle = '#666';
+    ctx.fillText(shorten(ctx, details, column - used), margin + used, top + 192 * unit);
+  } else {
+    ctx.fillText(shorten(ctx, details, column), margin, top + 192 * unit);
+  }
 
   // Right (or below, on the square card): who, when, and where to play.
   const logoWidth = 250 * unit;

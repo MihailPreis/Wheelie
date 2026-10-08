@@ -15,6 +15,9 @@ export interface GifOptions {
    * what only shows up there — the finish flag, a broken bike — is not left without its colours.
    */
   paletteSample?: Film;
+  /** The part of the run to show, in ticks; the whole run if left out. */
+  from?: number;
+  to?: number;
   onProgress?: (done: number) => void;
   signal?: AbortSignal;
 }
@@ -52,7 +55,11 @@ export async function renderGif(film: Film, options: GifOptions): Promise<Blob> 
   if (!ctx) throw new Error('Canvas 2D is not available');
 
   const scale = height / 270;
-  const frames = gifFrameCount(film.duration, speed);
+  const from = Math.max(0, options.from ?? 0);
+  const to = Math.min(film.length, options.to ?? film.length);
+  const frames = gifFrameCount((to - from) * TICK_MILLISECONDS, speed);
+  /** What the animation shows so far, as palette indices. */
+  let shown: Uint8Array | null = null;
   const ticksPerFrame = (FRAME_MILLISECONDS * speed) / TICK_MILLISECONDS;
   const encoder = GIFEncoder();
   let palette: number[][] | null = null;
@@ -64,7 +71,7 @@ export async function renderGif(film: Film, options: GifOptions): Promise<Blob> 
 
   for (let frame = 0; frame < frames; frame++) {
     if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
-    film.draw(ctx, width, height, scale, frame * ticksPerFrame);
+    film.draw(ctx, width, height, scale, Math.min(to, from + frame * ticksPerFrame));
     if (caption) {
       ctx.font = `${Math.round(13 * scale)}px ${GAME_FONT}`;
       ctx.textAlign = 'left';
@@ -79,13 +86,24 @@ export async function renderGif(film: Film, options: GifOptions): Promise<Blob> 
       const both = new Uint8ClampedArray(pixels.length + (sample?.length ?? 0));
       both.set(pixels);
       if (sample) both.set(sample, pixels.length);
-      palette = quantize(both, 256);
+      palette = quantize(both, 255);
+      // One more entry, never used as a colour: it stands for "same as the frame before".
+      palette.push([0, 0, 0]);
     }
     const last = frame === frames - 1;
-    encoder.writeFrame(applyPalette(pixels, palette), width, height, {
-      palette: frame === 0 ? palette : undefined,
-      delay: last ? LAST_FRAME_MILLISECONDS : FRAME_MILLISECONDS,
-    });
+    const delay = last ? LAST_FRAME_MILLISECONDS : FRAME_MILLISECONDS;
+    const index = applyPalette(pixels, palette);
+    if (!shown) {
+      encoder.writeFrame(index, width, height, { palette, delay, dispose: 1 });
+      shown = index;
+    } else {
+      // Most of the picture is the same from frame to frame; long runs of "unchanged" pack well.
+      const unchanged = palette.length - 1;
+      const changes = new Uint8Array(index.length);
+      for (let i = 0; i < index.length; i++) changes[i] = index[i] === shown[i] ? unchanged : (index[i] as number);
+      encoder.writeFrame(changes, width, height, { delay, transparent: true, transparentIndex: unchanged, dispose: 1 });
+      shown = index;
+    }
     if (frame % BATCH === BATCH - 1) {
       options.onProgress?.((frame + 1) / frames);
       await new Promise((resolve) => setTimeout(resolve));

@@ -18,6 +18,8 @@ export interface StoredReplay {
   wheelie: boolean;
   /** Race time in milliseconds; 0 unless finished. */
   time: number;
+  /** For a run on the daily track: its day, in days since the Unix epoch. */
+  daily?: number;
 }
 
 /** Unfinished runs are kept only as a rolling window; finished ones stay until deleted. */
