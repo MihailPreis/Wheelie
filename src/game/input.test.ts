@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Input } from './input';
+import { defaultBindings, Input, parseBindings, rebind } from './input';
 
 describe('Input', () => {
   it('maps arrows and WASD', () => {
@@ -68,5 +68,28 @@ describe('Input', () => {
     input.touch(1, 3);
     input.release();
     expect(input.read()).toEqual({ throttle: 0, lean: 0 });
+  });
+
+  it('rides with rebound keys and leaves the rest alone', () => {
+    const input = new Input();
+    const bindings = defaultBindings();
+    rebind(bindings, 'keys', 'accelerate', 'Space');
+    // A key given to another action leaves the one it had.
+    rebind(bindings, 'keys', 'brake', 'KeyA');
+    input.bindings = bindings;
+    expect(input.keyDown('ArrowUp')).toBe(false);
+    input.keyDown('Space');
+    expect(input.read()).toEqual({ throttle: 1, lean: 0 });
+    input.keyDown('KeyA');
+    expect(input.read()).toEqual({ throttle: 0, lean: 0 });
+    expect(bindings.keys.leanBack).toEqual(['ArrowLeft']);
+  });
+
+  it('falls back to the defaults for stored bindings that make no sense', () => {
+    expect(parseBindings(null)).toEqual(defaultBindings());
+    const parsed = parseBindings({ keys: { accelerate: ['KeyQ'], brake: 'x' }, buttons: { brake: [99] } });
+    expect(parsed.keys.accelerate).toEqual(['KeyQ']);
+    expect(parsed.keys.brake).toEqual(defaultBindings().keys.brake);
+    expect(parsed.buttons.brake).toEqual(defaultBindings().buttons.brake);
   });
 });

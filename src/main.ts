@@ -222,6 +222,15 @@ async function main(): Promise<void> {
     const file = event.dataTransfer?.files[0];
     if (file) void app.openFile(file);
   });
+  // The browser's Back button steps back through the game before it leaves the page. An entry
+  // of our own stands guard in the history; each time it is used up, another takes its place.
+  if (!embedded) {
+    history.pushState({ wheelie: true }, '');
+    window.addEventListener('popstate', () => {
+      if (app.back()) history.pushState({ wheelie: true }, '');
+      else history.back();
+    });
+  }
   canvas.addEventListener('click', () => app.sceneTap());
   window.addEventListener('pointermove', () => controls.wake());
   window.addEventListener('blur', () => input.release());

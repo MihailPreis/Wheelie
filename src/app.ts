@@ -38,7 +38,17 @@ import {
   saveScores,
   type TrackScores,
 } from './game/highscores';
-import type { Input } from './game/input';
+import {
+  ACTIONS,
+  type Action,
+  defaultBindings,
+  heldButton,
+  type Input,
+  isPlayStationPad,
+  parseBindings,
+  rebind,
+} from './game/input';
+import { buttonName, keyName } from './game/input-names';
 import {
   availableLeagues,
   canStart,
@@ -62,7 +72,7 @@ import { ReplayScreens } from './replay/screens';
 import { decodeFragment, decodeTrackFragment, isReplayFragment } from './replay/share';
 import { verifyReplay } from './replay/simulate';
 import type { ReplayStore, StoredReplay } from './replay/store';
-import { removeAll, writeJson } from './storage/store';
+import { readJson, removeAll, writeJson } from './storage/store';
 import type { Keypad } from './ui/keypad';
 import type { MenuItem, MenuKey, MenuView } from './ui/menu/view';
 import { chooseLanguage, currentLanguage, LANGUAGE_NAMES, LANGUAGES, STRINGS as S } from './ui/strings';
@@ -79,6 +89,7 @@ const MIN_UNFINISHED_TICKS = 200;
 
 /** Where the identifier of the pack being played is remembered. */
 export const ACTIVE_PACK_KEY = 'activePack';
+const BINDINGS_KEY = 'bindings';
 
 const ON_OFF = [S.on, S.off] as const;
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
@@ -179,6 +190,7 @@ export class App {
     private readonly onReset: () => void,
   ) {
     this.runPack = pack;
+    input.bindings = parseBindings(readJson<unknown>(BINDINGS_KEY));
     this.baseUrl = baseUrl;
     this.library = library;
     this.trackCounts = pack.levels.map((level) => level.length);
@@ -362,6 +374,10 @@ export class App {
   /** Handles a key press. Returns true if the key was used. */
   keyDown(event: KeyboardEvent): boolean {
     this.music.unlock();
+    if (this.capture) {
+      if (!event.repeat) this.capture.key(event.code);
+      return true;
+    }
     if (this.watching) return this.controls.key(event);
     if (this.editor.visible) return this.editor.key(event);
     if (this.menu.visible) {
@@ -383,7 +399,51 @@ export class App {
     return this.input.keyDown(event.code);
   }
 
+  /**
+   * The browser's Back button, or the back gesture of a phone: one step back in the game.
+   * Returns false where there is nowhere back to go and the page itself may be left.
+   */
+  back(): boolean {
+    if (this.capture) {
+      this.capture.key('Escape');
+      return true;
+    }
+    if (this.watching) {
+      if (this.embedUrl) return false;
+      this.stopWatching();
+      return true;
+    }
+    if (this.editor.visible) {
+      this.editor.onClose?.();
+      return true;
+    }
+    if (this.menu.visible) {
+      if (this.current === this.mainMenu) return false;
+      this.menuKey('back');
+      return true;
+    }
+    if (this.playing) {
+      this.pause();
+      return true;
+    }
+    return false;
+  }
+
+  /** Set while the Controls screen waits for the key or button to give to an action. */
+  private capture: { key: (code: string) => void; button: ((index: number) => void) | null; armed: boolean } | null =
+    null;
+
   private readonly pollGamepad = (now: number): void => {
+    const capture = this.capture;
+    if (capture?.button) {
+      // The button that chose the row is still down; wait for it to come up first.
+      const held = heldButton();
+      if (held === null) capture.armed = true;
+      else if (capture.armed) capture.button(held);
+      this.padNavigator.poll(now);
+      requestAnimationFrame(this.pollGamepad);
+      return;
+    }
     for (const action of this.padNavigator.poll(now)) {
       if (this.editor.visible && !this.watching) {
         this.editor.pad(action);
@@ -1413,6 +1473,7 @@ export class App {
               this.refresh();
             },
           },
+          this.link(S.controls, this.controlsScreen(self)),
           toggle(S.lookAhead, 'lookAhead'),
           {
             kind: 'option',
@@ -1449,6 +1510,100 @@ export class App {
       };
     };
     return self;
+  }
+
+  /** Which keys and buttons ride the bike. */
+  private controlsScreen(parent: ScreenBuilder): ScreenBuilder {
+    const self: ScreenBuilder = () => {
+      const back = () => this.open(parent);
+      const bindings = this.input.bindings;
+      const playStation = isPlayStationPad();
+      const save = () => {
+        this.input.bindings = bindings;
+        writeJson(BINDINGS_KEY, bindings);
+        this.capture = null;
+        this.open(self);
+      };
+      const ask = (text: string) =>
+        this.open(() => ({ title: S.controls, back: null, items: [{ kind: 'text', html: text }] }));
+      const cancel = () => {
+        this.capture = null;
+        this.open(self);
+      };
+      const items: MenuItem[] = [];
+      ACTIONS.forEach((action: Action, index) => {
+        const label = S.actions[index] ?? action;
+        items.push(
+          {
+            kind: 'action',
+            label: `${label}: ${bindings.keys[action].map(keyName).join(', ') || '---'}`,
+            run: () => {
+              ask(S.pressKey(label));
+              this.capture = {
+                armed: true,
+                button: null,
+                key: (code) => {
+                  if (code === 'Escape') return cancel();
+                  rebind(bindings, 'keys', action, code);
+                  save();
+                },
+              };
+            },
+          },
+          {
+            kind: 'action',
+            label: `${label} (${S.gamepad}): ${
+              bindings.buttons[action].map((button) => buttonName(button, playStation)).join(', ') || '---'
+            }`,
+            run: () => {
+              ask(S.pressButton(label));
+              this.capture = {
+                armed: false,
+                key: (code) => {
+                  if (code === 'Escape') cancel();
+                },
+                button: (button) => {
+                  rebind(bindings, 'buttons', action, button);
+                  save();
+                },
+              };
+            },
+          },
+        );
+      });
+      items.push(
+        {
+          kind: 'action',
+          label: S.controlsReset,
+          run: () => {
+            this.input.bindings = defaultBindings();
+            removeAll(BINDINGS_KEY);
+            this.open(self);
+          },
+        },
+        { kind: 'action', label: S.back, run: back },
+      );
+      return { title: S.controls, back, items };
+    };
+    return self;
+  }
+
+  /** The Keys page of the help: the controls as they are now, the device in use first. */
+  private keysText(): string {
+    const { keys, buttons } = this.input.bindings;
+    const playStation = isPlayStationPad();
+    const list = (names: string[]) => escapeHtml(names.join(', ') || '---');
+    const keyboard = ACTIONS.map((action, index) => `${S.actions[index]}: ${list(keys[action].map(keyName))}`);
+    const pad = ACTIONS.map(
+      (action, index) =>
+        `${S.actions[index]}: ${list(buttons[action].map((button) => buttonName(button, playStation)))}`,
+    );
+    const sections = [
+      `<b>${S.keyboard}</b><br>${keyboard.join('<br>')}<br>${S.keyboardPause}`,
+      `<b>${S.gamepad}</b><br>${pad.join('<br>')}<br>${S.gamepadExtra(buttonName(9, playStation))}`,
+    ];
+    if (this.input.device === 'gamepad') sections.reverse();
+    return `${sections.join('<br><br>')}<br><br>${S.keysText}`;
   }
 
   private eraseScreen(parent: ScreenBuilder): ScreenBuilder {
@@ -1511,7 +1666,7 @@ export class App {
         back: () => this.open(parent),
         items: [
           page(S.objective, S.objectiveText),
-          page(S.keys, S.keysText),
+          { kind: 'action', label: S.keys, run: () => this.open(this.textScreen(S.keys, this.keysText(), self)) },
           page(S.unlocking, S.unlockingText),
           page(S.highscores, S.highscoreText),
           page(S.options, S.optionsText),

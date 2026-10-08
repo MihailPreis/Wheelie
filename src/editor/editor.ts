@@ -1,4 +1,5 @@
 import type { PadAction } from '../game/gamepad-nav';
+import { isPlayStationPad } from '../game/input';
 import { GAME_FONT } from '../render/hud';
 import { STRINGS as S } from '../ui/strings';
 import {
@@ -520,7 +521,10 @@ export class Editor {
         key('Escape');
         break;
     }
-    this.say(S.editorPadHint);
+    const [pick, add, remove, test, leave] = isPlayStationPad()
+      ? (['Cross', 'Square', 'Triangle', 'Options', 'Circle'] as const)
+      : (['A', 'X', 'Y', 'Start', 'B'] as const);
+    this.say(S.editorPadHint(pick, add, remove, test, leave));
   }
 
   // ---- drawing ------------------------------------------------------------------------------

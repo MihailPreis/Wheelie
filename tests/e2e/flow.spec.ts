@@ -72,6 +72,37 @@ test('options are toggled and remembered', async ({ page }) => {
   await expect(perspective).toHaveText('Off');
 });
 
+test('a riding key is changed in the options, and the browser Back button steps back', async ({ page }) => {
+  await pick(page, 'Options');
+  await pick(page, 'Controls');
+  await expect(items(page).first()).toHaveText('Accelerate: Up, W');
+  await press(page, 'Enter');
+  await expect(texts(page).first()).toContainText('Press the key');
+  await press(page, 'KeyQ');
+  await expect(items(page).first()).toHaveText('Accelerate: Q');
+  expect(await page.evaluate(() => localStorage.getItem('wheelie.bindings'))).toContain('KeyQ');
+
+  // The help shows the controls as they now are.
+  await page.goBack();
+  await expect(title(page)).toHaveText('Options');
+  await page.goBack();
+  await expect(title(page)).toHaveText('Main');
+  await pick(page, 'Help');
+  await pick(page, 'Keys');
+  await expect(texts(page).first()).toContainText('Accelerate: Q');
+
+  // Riding: Back pauses rather than leaves.
+  await page.goBack();
+  await expect(title(page)).toHaveText('Help');
+  await page.goBack();
+  await expect(title(page)).toHaveText('Main');
+  await pick(page, 'Play Menu');
+  await pick(page, 'Start>');
+  await expect(page.locator('.menu')).toBeHidden();
+  await page.goBack();
+  await expect(title(page)).toHaveText('Ingame');
+});
+
 test('locked tracks cannot be started', async ({ page }) => {
   await press(page, 'Enter');
   await expect(title(page)).toHaveText('Play');

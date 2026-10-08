@@ -61,17 +61,72 @@ export const KEYSETS: readonly (readonly Contribution[])[] = [
   ],
 ];
 
-/** Keys that work regardless of the keyset, by `KeyboardEvent.code`. */
-const DIRECT_KEYS: Readonly<Record<string, Contribution>> = {
-  ArrowUp: ACCELERATE,
-  ArrowDown: BRAKE,
-  ArrowLeft: LEAN_BACK,
-  ArrowRight: LEAN_FORWARD,
-  KeyW: ACCELERATE,
-  KeyS: BRAKE,
-  KeyA: LEAN_BACK,
-  KeyD: LEAN_FORWARD,
+export const ACTIONS = ['accelerate', 'brake', 'leanBack', 'leanForward'] as const;
+export type Action = (typeof ACTIONS)[number];
+
+const CONTRIBUTIONS: Readonly<Record<Action, Contribution>> = {
+  accelerate: ACCELERATE,
+  brake: BRAKE,
+  leanBack: LEAN_BACK,
+  leanForward: LEAN_FORWARD,
 };
+
+/**
+ * Which keys (by `KeyboardEvent.code`) and which gamepad buttons (by their index in the standard
+ * mapping) ride the bike. The digit keys follow the keyset instead and are not listed here.
+ */
+export interface Bindings {
+  keys: Record<Action, string[]>;
+  buttons: Record<Action, number[]>;
+}
+
+export function defaultBindings(): Bindings {
+  return {
+    keys: {
+      accelerate: ['ArrowUp', 'KeyW'],
+      brake: ['ArrowDown', 'KeyS'],
+      leanBack: ['ArrowLeft', 'KeyA'],
+      leanForward: ['ArrowRight', 'KeyD'],
+    },
+    buttons: {
+      accelerate: [PAD.rightTrigger, PAD.faceBottom, PAD.dpadUp],
+      brake: [PAD.leftTrigger, PAD.faceLeft, PAD.dpadDown],
+      leanBack: [PAD.dpadLeft, PAD.leftBumper],
+      leanForward: [PAD.dpadRight, PAD.rightBumper],
+    },
+  };
+}
+
+/** Reads stored bindings, falling back to the defaults for anything that does not make sense. */
+export function parseBindings(stored: unknown): Bindings {
+  const bindings = defaultBindings();
+  const source = stored as Partial<Bindings> | null;
+  if (typeof source !== 'object' || source === null) return bindings;
+  for (const action of ACTIONS) {
+    const keys = source.keys?.[action];
+    if (Array.isArray(keys) && keys.length <= 4 && keys.every((key) => typeof key === 'string' && key.length < 32)) {
+      bindings.keys[action] = [...keys];
+    }
+    const buttons = source.buttons?.[action];
+    if (
+      Array.isArray(buttons) &&
+      buttons.length <= 4 &&
+      buttons.every((button) => Number.isInteger(button) && button >= 0 && button < 32)
+    ) {
+      bindings.buttons[action] = [...buttons];
+    }
+  }
+  return bindings;
+}
+
+/** Gives a key or a button to one action alone, taking it away from whichever had it. */
+export function rebind(bindings: Bindings, device: 'keys' | 'buttons', action: Action, input: string | number): void {
+  for (const other of ACTIONS) {
+    const list = bindings[device][other] as (string | number)[];
+    bindings[device][other] = list.filter((bound) => bound !== input) as never;
+  }
+  bindings[device][action] = [input] as never;
+}
 
 function digitOf(code: string): number | null {
   const match = /^(?:Digit|Numpad)(\d)$/.exec(code);
@@ -80,7 +135,7 @@ function digitOf(code: string): number | null {
 
 // Standard gamepad mapping (https://w3c.github.io/gamepad/#remapping), shared by Xbox,
 // DualShock and DualSense controllers.
-const PAD = {
+export const PAD = {
   faceBottom: 0,
   faceLeft: 2,
   leftBumper: 4,
@@ -95,9 +150,49 @@ const PAD = {
 const TRIGGER_THRESHOLD = 0.3;
 const STICK_DEAD_ZONE = 0.35;
 
+const buttonDown = (pad: Gamepad, index: number) =>
+  (pad.buttons[index]?.pressed ?? false) || (pad.buttons[index]?.value ?? 0) > TRIGGER_THRESHOLD;
+
+/** The lowest-numbered button held on any gamepad, or null. */
+export function heldButton(): number | null {
+  const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+  for (const pad of pads) {
+    if (!pad?.connected) continue;
+    const index = pad.buttons.findIndex((_, button) => buttonDown(pad, button));
+    if (index >= 0) return index;
+  }
+  return null;
+}
+
+/** Whether the gamepad in use names its buttons the PlayStation way. */
+export function isPlayStationPad(): boolean {
+  const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+  return [...pads].some(
+    (pad) => pad?.connected && /dualsense|dualshock|playstation|054c|wireless controller/i.test(pad.id),
+  );
+}
+
 export class Input {
   /** 0–2: which of the original keysets the digit keys and the on-screen keypad use. */
   keyset = 0;
+  private bound = defaultBindings();
+  private keyActions = new Map<string, Contribution>();
+
+  constructor() {
+    this.bindings = this.bound;
+  }
+
+  get bindings(): Bindings {
+    return this.bound;
+  }
+
+  set bindings(bindings: Bindings) {
+    this.bound = bindings;
+    this.keyActions = new Map();
+    for (const action of ACTIONS) {
+      for (const key of bindings.keys[action]) this.keyActions.set(key, CONTRIBUTIONS[action]);
+    }
+  }
   /** The device that was used last; decides whether the on-screen keypad is shown. */
   device: InputDevice = 'keyboard';
   onDeviceChange: ((device: InputDevice) => void) | null = null;
@@ -114,7 +209,7 @@ export class Input {
 
   /** Returns true if the key is one of the riding controls. */
   keyDown(code: string): boolean {
-    if (!(code in DIRECT_KEYS) && digitOf(code) === null) return false;
+    if (!this.keyActions.has(code) && digitOf(code) === null) return false;
     this.keys.add(code);
     this.use('keyboard');
     return true;
@@ -159,7 +254,8 @@ export class Input {
     const keyset = KEYSETS[this.keyset] ?? (KEYSETS[0] as readonly Contribution[]);
     for (const code of this.keys) {
       const digit = digitOf(code);
-      add(digit === null ? DIRECT_KEYS[code] : keyset[digit]);
+      // A digit given an action of its own no longer follows the keyset.
+      add(this.keyActions.get(code) ?? (digit === null ? undefined : keyset[digit]));
     }
     for (const digit of this.touchDigits.values()) add(keyset[digit]);
 
@@ -175,14 +271,13 @@ export class Input {
     const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
     for (const pad of pads) {
       if (!pad?.connected) continue;
-      const value = (index: number) => pad.buttons[index]?.value ?? 0;
-      const pressed = (index: number) => pad.buttons[index]?.pressed ?? false;
       // Triggers and sticks are analogue; the game is not, so they act past a threshold.
-      if (value(PAD.rightTrigger) > TRIGGER_THRESHOLD || pressed(PAD.faceBottom) || pressed(PAD.dpadUp)) throttle++;
-      if (value(PAD.leftTrigger) > TRIGGER_THRESHOLD || pressed(PAD.faceLeft) || pressed(PAD.dpadDown)) throttle--;
+      const held = (action: Action) => this.bound.buttons[action].some((index) => buttonDown(pad, index));
+      if (held('accelerate')) throttle++;
+      if (held('brake')) throttle--;
       const stick = pad.axes[0] ?? 0;
-      if (stick > STICK_DEAD_ZONE || pressed(PAD.dpadRight) || pressed(PAD.rightBumper)) lean++;
-      if (stick < -STICK_DEAD_ZONE || pressed(PAD.dpadLeft) || pressed(PAD.leftBumper)) lean--;
+      if (stick > STICK_DEAD_ZONE || held('leanForward')) lean++;
+      if (stick < -STICK_DEAD_ZONE || held('leanBack')) lean--;
     }
     const active = throttle !== 0 || lean !== 0;
     if (active && !this.padActive) this.use('gamepad');

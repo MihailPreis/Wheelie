@@ -235,11 +235,7 @@ const EN = {
   objectiveText:
     "Race to the finish line as fast as you can without crashing. By leaning forward and backward you can adjust the rotation of your bike. By landing on both wheels after jumping, your bike won't crash as easily. Beware, the levels tend to get harder and harder...",
   keys: 'Keys',
-  keysText: `<b>Keyboard</b><br>
-Up or W accelerates, Down or S brakes, Right or D leans forward and Left or A leans backward. Esc pauses.<br><br>
-<b>Gamepad</b><br>
-Right trigger or the bottom face button accelerates, left trigger or the left face button brakes. The left stick, the d-pad or the bumpers lean. Start pauses.<br><br>
-<b>Keyset 1</b><br>
+  keysText: `<b>Keyset 1</b><br>
 2 accelerates, 8 brakes, 6 leans forward and 4 leans backward. 1 accelerates and leans backward. 3 accelerates and leans forward. 7 brakes and leans backward. 9 brakes and leans forward.<br><br>
 <b>Keyset 2</b><br>
 1 accelerates, 4 brakes, 6 leans forward and 5 leans backward.<br><br>
@@ -292,12 +288,23 @@ Source code, under the GNU GPL v2:<br>github.com/MihailPreis/Wheelie`,
       ? `${taken} tracks taken, ${skipped} left out: too large, too small or too many.`
       : `${taken} tracks taken.`,
   editorOpenIn: 'Open in the editor',
-  editorPadHint:
-    'Stick moves. A picks up or puts down, X adds a point, Y deletes, bumpers step along the points, triggers zoom, Start tests, B leaves.',
+  editorPadHint: (pick: string, add: string, remove: string, test: string, leave: string) =>
+    `Stick moves. ${pick} picks up or puts down, ${add} adds a point, ${remove} deletes, bumpers step along the points, triggers zoom, ${test} tests, ${leave} leaves.`,
   sharedTrack: 'Shared track',
   dailyPast: 'Past days',
   dailyBestPast: 'Your best',
   dailyNewBestPast: 'Your best on this track!',
+  controls: 'Controls',
+  actions: ['Accelerate', 'Brake', 'Lean back', 'Lean forward'] as readonly string[],
+  keyboard: 'Keyboard',
+  gamepad: 'Gamepad',
+  directions: ['Up', 'Down', 'Left', 'Right'] as readonly string[],
+  dpad: (direction: string) => `D-pad ${direction.toLowerCase()}`,
+  pressKey: (action: string) => `Press the key for "${action}". Esc cancels.`,
+  pressButton: (action: string) => `Press the gamepad button for "${action}". Esc cancels.`,
+  controlsReset: 'Reset controls',
+  keyboardPause: 'Pause: Esc, P',
+  gamepadExtra: (pause: string) => `The left stick leans too. Pause: ${pause}`,
 
   crashed: 'Crashed',
   wheelie: 'Wheelie!',
