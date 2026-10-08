@@ -37,6 +37,20 @@ export function surplus(replays: readonly StoredReplay[], kept = UNFINISHED_KEPT
   return unfinished.slice(kept);
 }
 
+/** Identifiers of the runs that are the fastest finish on their track and league. */
+export function personalBests(replays: readonly StoredReplay[]): Set<string> {
+  const best = new Map<string, StoredReplay>();
+  for (const replay of replays) {
+    if (replay.outcome !== Outcome.Finished) continue;
+    const key = `${replay.packId}/${replay.level}/${replay.track}/${replay.league}`;
+    const held = best.get(key);
+    if (!held || replay.time < held.time || (replay.time === held.time && replay.date < held.date)) {
+      best.set(key, replay);
+    }
+  }
+  return new Set([...best.values()].map((replay) => replay.id));
+}
+
 export class ReplayStore {
   private readonly table = new Table('replays', isStoredReplay);
   private counter = 0;

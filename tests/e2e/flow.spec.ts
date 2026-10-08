@@ -203,16 +203,16 @@ test('a run is recorded and listed under My runs', async ({ page }) => {
   await press(page, 'Escape');
   await pick(page, 'My runs');
   await expect(title(page)).toHaveText('My runs');
-  await expect(items(page)).toHaveCount(3);
-  await expect(items(page).first()).toContainText('100cc');
+  await expect(items(page)).toHaveCount(4);
+  await expect(items(page).nth(1)).toContainText('100cc');
 
   // It is still there after a reload, and can be deleted.
   await page.reload();
   await page.keyboard.press('Enter');
   await expect(title(page)).toHaveText('Main', { timeout: 10_000 });
   await pick(page, 'My runs');
-  await expect(items(page)).toHaveCount(3);
-  await press(page, 'Enter');
+  await expect(items(page)).toHaveCount(4);
+  await press(page, 'ArrowDown', 'Enter');
   await expect(texts(page).nth(1)).toContainText('Result');
 
   // Watch it: the replay plays, can be paused, sought and left.
@@ -221,6 +221,11 @@ test('a run is recorded and listed under My runs', async ({ page }) => {
   await press(page, 'Enter');
   await expect(page.locator('.player')).toBeVisible();
   await expect.poll(position).toBeGreaterThan(30);
+  // The keys held in the replay can be shown over it.
+  await expect(page.locator('.player-keys')).toBeHidden();
+  await press(page, 'i');
+  await expect(page.locator('.player-keys')).toBeVisible();
+  await expect(page.locator('.player-key-up')).toHaveClass(/held/);
   await press(page, 'Space');
   await expect(page.locator('.player-toggle')).toHaveText('Play');
   const paused = await position();
@@ -261,7 +266,7 @@ test('a run shared as a link opens as a replay in a fresh browser', async ({ pag
   await expect(title(page)).toHaveText('My runs');
 
   // The run → Share → Copy link.
-  await press(page, 'Enter', 'ArrowDown', 'ArrowDown', 'Enter');
+  await press(page, 'ArrowDown', 'Enter', 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(title(page)).toHaveText('Share');
   await press(page, 'Enter');
   await expect(texts(page).nth(1)).toContainText('Link copied');
@@ -320,7 +325,16 @@ test('a run shared as a link opens as a replay in a fresh browser', async ({ pag
   await visitor.keyboard.press('Escape');
   await expect(visitor.locator('.menu-title')).toHaveText('Main');
   await pick(visitor, 'My runs');
-  await expect(visitor.locator('.menu-item .menu-label')).toHaveCount(3);
+  await expect(visitor.locator('.menu-item .menu-label')).toHaveCount(4);
+
+  // Embedded in another page, the replay plays but cannot be left and is not kept.
+  const guest = await (await browser.newContext()).newPage();
+  await guest.goto(link.replace('#', '?embed=1#'));
+  await expect(guest.locator('.player')).toBeVisible({ timeout: 10_000 });
+  await expect(guest.locator('a.player-button')).toHaveText('Play Wheelie!');
+  await guest.keyboard.press('Escape');
+  await expect(guest.locator('.player')).toBeVisible();
+  expect(await guest.evaluate(() => indexedDB.databases().then((all) => all.length))).toBeLessThanOrEqual(1);
   await other.close();
 });
 

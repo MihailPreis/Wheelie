@@ -15,6 +15,10 @@ export interface RunFacts {
   turns: number;
   /** Tick at which the rider went down, or null. */
   crashedAt: number | null;
+  /** Tick at which the finish line was crossed, or null. */
+  finishedAt: number | null;
+  /** Ticks at which the bike completed a full turn. */
+  flips: number[];
 }
 
 /**
@@ -24,7 +28,17 @@ export interface RunFacts {
 export function analyseRun(track: TrackData, league: number, inputs: Uint8Array): RunFacts {
   const sim = new Sim({ track, league, demo: false });
   const pose = createPose();
-  const facts: RunFacts = { finished: false, braked: false, coasted: false, leaned: false, turns: 0, crashedAt: null };
+  const facts: RunFacts = {
+    finished: false,
+    braked: false,
+    coasted: false,
+    leaned: false,
+    turns: 0,
+    crashedAt: null,
+    finishedAt: null,
+    flips: [],
+  };
+  let flipFrom = 0;
   let angle: number | null = null;
   let turned = 0;
   let least = 0;
@@ -35,6 +49,7 @@ export function analyseRun(track: TrackData, league: number, inputs: Uint8Array)
     const status = sim.step(throttle, lean);
     if (status === Status.Finished || status === Status.FinishedLate) {
       facts.finished = true;
+      facts.finishedAt = sim.ticks;
       break;
     }
     if (status === Status.Broken || status === Status.Crashed) {
@@ -59,6 +74,10 @@ export function analyseRun(track: TrackData, league: number, inputs: Uint8Array)
       turned += step;
       least = Math.min(least, turned);
       most = Math.max(most, turned);
+      if (Math.abs(turned - flipFrom) >= 2 * Math.PI) {
+        facts.flips.push(sim.ticks);
+        flipFrom = turned;
+      }
     }
     angle = now;
   }

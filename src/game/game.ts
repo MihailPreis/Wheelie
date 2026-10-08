@@ -266,6 +266,12 @@ export class Game {
     return this.playback?.inputs.length ?? 0;
   }
 
+  /** Input code of the tick last shown of the replay being watched, or null. */
+  get playbackInput(): number | null {
+    const tick = this.position;
+    return this.playback && tick > 0 ? (this.playback.inputs[tick - 1] ?? null) : null;
+  }
+
   /** Jumps to a tick of the replay being watched. */
   seek(tick: number): void {
     const playback = this.playback;

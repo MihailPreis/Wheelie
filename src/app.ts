@@ -46,7 +46,7 @@ import { loadSettings, normalizeName, type Settings, saveSettings } from './game
 import type { Library } from './mods/library';
 import { buildPack, ORIGINAL_PACK_ID, type Pack } from './mods/pack';
 import { ModsScreens, type ScreenBuilder } from './mods/screens';
-import type { PlayerControls } from './player/controls';
+import type { PlayerControls, TimelineMark } from './player/controls';
 import type { Sprites } from './render/sprites';
 import { ReplayScreens } from './replay/screens';
 import { decodeFragment, isReplayFragment } from './replay/share';
@@ -120,6 +120,8 @@ export class App {
   /** The run in progress is on the daily track. */
   private ridingDaily = false;
   private readonly padNavigator = new GamepadNavigator();
+  /** Address of the full game when this one is embedded in another page to show a replay. */
+  embedUrl: string | null = null;
 
   private current: ScreenBuilder | null = null;
   /** What is being ridden, or was last. */
@@ -185,6 +187,11 @@ export class App {
         race: (replay, back) => void this.race(replay, back),
         importReplay: (bytes) => void this.importReplay(bytes),
         shared: () => this.earn(['shared']),
+        selected: () => ({
+          packId: this.pack.id,
+          level: this.progress.selectedLevel,
+          track: this.selectedTrack,
+        }),
         shareBaseUrl,
         shortLinkApi,
         sprites,
@@ -811,16 +818,35 @@ export class App {
     }
     const found = await this.trackFor(replay);
     if (typeof found === 'string') fail(found);
-    else this.startWatching(replay, found.track, back, fail);
+    else this.startWatching(replay, found.track, back, fail, stored);
   }
 
-  private startWatching(replay: Replay, track: Track, back: ScreenBuilder, fail: (text: string) => void): void {
+  /** `stored` is the run as it is kept, if it is: that is what racing it needs. */
+  private startWatching(
+    replay: Replay,
+    track: Track,
+    back: ScreenBuilder,
+    fail: (text: string) => void,
+    stored: StoredReplay | null,
+  ): void {
+    let marks: TimelineMark[];
     try {
       this.game.watch(track, replay.league, { inputs: replay.inputs, finishTime: replay.time });
+      const facts = analyseRun(track.data, replay.league, replay.inputs);
+      marks = facts.flips.map((tick) => ({ tick, kind: 'flip' as const }));
+      if (facts.crashedAt !== null) marks.push({ tick: facts.crashedAt, kind: 'crash' });
+      if (facts.finishedAt !== null) marks.push({ tick: facts.finishedAt, kind: 'finish' });
     } catch {
       fail(S.replayDamaged);
       return;
     }
+    const race =
+      stored && !this.embedUrl
+        ? () => {
+            this.stopWatching();
+            void this.race(stored, back);
+          }
+        : null;
     this.watching = true;
     this.afterWatching = back;
     this.playing = false;
@@ -829,7 +855,7 @@ export class App {
     this.game.options.dimmed = false;
     this.menu.hide();
     this.current = null;
-    this.controls.show();
+    this.controls.show({ marks, race, embedded: this.embedUrl });
     this.updateKeypad();
   }
 
@@ -858,11 +884,12 @@ export class App {
       fail(S.replayDamaged);
       return;
     }
-    const known = (await this.replayStore.list()).some(
-      (stored) => stored.bytes.length === bytes.length && stored.bytes.every((byte, index) => byte === bytes[index]),
-    );
-    if (!known) {
-      await this.replayStore.add({
+    const same = (other: StoredReplay) =>
+      other.bytes.length === bytes.length && other.bytes.every((byte, index) => byte === bytes[index]);
+    let stored = (await this.replayStore.list()).find(same) ?? null;
+    // A replay shown on somebody else's page is a guest there and leaves nothing behind.
+    if (!stored && !this.embedUrl) {
+      stored = await this.replayStore.add({
         bytes,
         packId: replay.packId,
         packName: found.packName,
@@ -877,7 +904,7 @@ export class App {
         time: replay.time,
       });
     }
-    this.startWatching(replay, found.track, back, fail);
+    this.startWatching(replay, found.track, back, fail, stored);
   }
 
   /** Opens the replay carried by a link's fragment, if there is one. */

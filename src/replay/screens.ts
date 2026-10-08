@@ -9,7 +9,7 @@ import type { Sprites } from '../render/sprites';
 import type { MenuItem, MenuScreen } from '../ui/menu/view';
 import { STRINGS as S } from '../ui/strings';
 import { COMFORTABLE_LINK_LENGTH, encodeLink } from './share';
-import type { ReplayStore, StoredReplay } from './store';
+import { personalBests, type ReplayStore, type StoredReplay } from './store';
 
 type ScreenBuilder = () => MenuScreen;
 
@@ -22,6 +22,8 @@ export interface ReplaysHost {
   race(replay: StoredReplay, back: ScreenBuilder): void;
   /** One of the player's runs has been sent somewhere. */
   shared(): void;
+  /** The pack and track chosen in the Play menu, for the filters. */
+  selected(): { packId: string; level: number; track: number };
   /** Takes in a replay file from outside. */
   importReplay(bytes: Uint8Array): void;
   /** Address that replay links are built on. */
@@ -97,11 +99,17 @@ export class ReplayScreens {
   /** Set while a GIF is being rendered; aborting it cancels the rendering. */
   private rendering: AbortController | null = null;
   private shown = PAGE;
+  private filter = 0;
 
   constructor(
     private readonly host: ReplaysHost,
     private readonly store: ReplayStore,
   ) {}
+
+  /** The runs that are the fastest finish on their track and league. */
+  private get best(): Set<string> {
+    return personalBests(this.replays);
+  }
 
   async openList(): Promise<void> {
     this.replays = await this.store.list();
@@ -113,17 +121,42 @@ export class ReplayScreens {
     const back = () => this.host.open(this.host.parent);
     const items: MenuItem[] = [];
     if (this.replays.length === 0) items.push({ kind: 'text', html: S.noRuns });
-    for (const replay of this.replays.slice(0, this.shown)) {
+    else {
+      items.push({
+        kind: 'option',
+        label: S.show,
+        options: S.runFilters,
+        value: this.filter,
+        change: (value) => {
+          this.filter = value;
+          this.shown = PAGE;
+          this.host.open(this.listScreen);
+        },
+      });
+    }
+    const selected = this.host.selected();
+    const here = (replay: StoredReplay) => replay.packId === selected.packId;
+    const keep: ((replay: StoredReplay) => boolean)[] = [
+      () => true,
+      (replay) => replay.outcome === Outcome.Finished,
+      (replay) => this.best.has(replay.id),
+      here,
+      (replay) => here(replay) && replay.level === selected.level && replay.track === selected.track,
+    ];
+    const replays = this.replays.filter(keep[this.filter] ?? (() => true));
+    if (this.replays.length > 0 && replays.length === 0) items.push({ kind: 'text', html: S.nothingFound });
+    for (const replay of replays.slice(0, this.shown)) {
+      const best = this.best.has(replay.id) ? ` - ${S.personalBest}` : '';
       items.push({
         kind: 'action',
-        label: `${replay.trackName} - ${LEAGUE_NAMES[replay.league] ?? ''} - ${result(replay)}`,
+        label: `${replay.trackName} - ${LEAGUE_NAMES[replay.league] ?? ''} - ${result(replay)}${best}`,
         run: () => this.host.open(this.replayScreen(replay)),
       });
     }
-    if (this.replays.length > this.shown) {
+    if (replays.length > this.shown) {
       items.push({
         kind: 'action',
-        label: S.loadMore(this.replays.length - this.shown),
+        label: S.loadMore(replays.length - this.shown),
         run: () => {
           this.shown += PAGE;
           this.host.open(this.listScreen);
@@ -145,7 +178,9 @@ export class ReplayScreens {
           { kind: 'text', html: escapeHtml(replay.trackName), big: true },
           field(
             S.result,
-            result(replay) + (replay.outcome === Outcome.Finished && replay.wheelie ? ` - ${S.wheelie}` : ''),
+            result(replay) +
+              (replay.outcome === Outcome.Finished && replay.wheelie ? ` - ${S.wheelie}` : '') +
+              (this.best.has(replay.id) ? ` - ${S.personalBest}` : ''),
           ),
           field(S.league, LEAGUE_NAMES[replay.league] ?? ''),
           field(S.levels, `${replay.packName} - ${LEVEL_NAMES[replay.level] ?? ''}`),
@@ -202,6 +237,20 @@ export class ReplayScreens {
               .catch(() => say(S.linkNotCopied)),
         },
       ];
+      items.push({
+        kind: 'action',
+        label: S.copyEmbed,
+        run: () =>
+          void link()
+            .then(async (url) => {
+              const src = url.replace('#', '?embed=1#');
+              await navigator.clipboard.writeText(
+                `<iframe src="${src}" width="640" height="400" style="border:0" allowfullscreen></iframe>`,
+              );
+              say(S.embedCopied);
+            })
+            .catch(() => say(S.linkNotCopied)),
+      });
       if (this.host.shortLinkApi) {
         items.push({
           kind: 'action',

@@ -71,3 +71,105 @@
   flex: 1;
   font-variant-numeric: tabular-nums;
 }
+
+.player-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.player-mark {
+  position: absolute;
+  top: 50%;
+  width: calc(var(--dp) * 3px);
+  height: calc(var(--dp) * 12px);
+  transform: translate(-50%, -50%);
+  background: #000;
+}
+
+.player-mark-crash {
+  background: #d00000;
+}
+
+.player-mark-finish {
+  background: #29aa27;
+}
+
+.player-button[hidden] {
+  display: none;
+}
+
+a.player-button {
+  text-decoration: none;
+  text-align: center;
+}
+
+/* The bike's four controls, laid out as the arrow keys are. */
+.player-keys {
+  position: absolute;
+  right: calc(var(--dp) * 12px);
+  bottom: 100%;
+  display: grid;
+  grid-template: repeat(2, calc(var(--dp) * 22px)) / repeat(3, calc(var(--dp) * 22px));
+  gap: calc(var(--dp) * 3px);
+  margin-bottom: calc(var(--dp) * 10px);
+  pointer-events: none;
+}
+
+.player-keys[hidden] {
+  display: none;
+}
+
+.player-key {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: calc(var(--dp) * 1px) solid #000;
+  background: rgb(255 255 255 / 85%);
+}
+
+.player-key.held {
+  background: #29aa27;
+}
+
+/* Arrowheads drawn with borders: the game's font has no arrows. */
+.player-key::after {
+  content: "";
+  border: calc(var(--dp) * 5px) solid transparent;
+}
+
+.player-key-up {
+  grid-area: 1 / 2;
+}
+
+.player-key-up::after {
+  border-top-width: 0;
+  border-bottom-color: #000;
+}
+
+.player-key-left {
+  grid-area: 2 / 1;
+}
+
+.player-key-left::after {
+  border-left-width: 0;
+  border-right-color: #000;
+}
+
+.player-key-down {
+  grid-area: 2 / 2;
+}
+
+.player-key-down::after {
+  border-bottom-width: 0;
+  border-top-color: #000;
+}
+
+.player-key-right {
+  grid-area: 2 / 3;
+}
+
+.player-key-right::after {
+  border-right-width: 0;
+  border-left-color: #000;
+}

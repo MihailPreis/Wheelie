@@ -13,7 +13,16 @@ const entry = parsePackHeader(bytes).levels[0]?.[0];
 if (!entry) throw new Error('The first track is missing');
 const intro = parseTrack(bytes, entry.offset);
 
-const clean: RunFacts = { finished: true, braked: false, coasted: false, leaned: false, turns: 0.2, crashedAt: null };
+const clean: RunFacts = {
+  finished: true,
+  braked: false,
+  coasted: false,
+  leaned: false,
+  turns: 0.2,
+  crashedAt: null,
+  finishedAt: null,
+  flips: [],
+};
 const context: RunContext = { level: 1, daily: false, wheelie: false, time: 10_000, ghostTime: null };
 
 describe('analysing a run', () => {

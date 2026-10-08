@@ -5,7 +5,7 @@ import { PHYSICS_VERSION } from '../core/version';
 import { parsePackHeader, parseTrack } from '../formats/mrg';
 import { decodeReplay, encodeReplay, hashTrack, inputCode, Outcome, type Replay } from '../formats/replay';
 import { simulate, verifyReplay } from './simulate';
-import { type StoredReplay, surplus } from './store';
+import { personalBests, type StoredReplay, surplus } from './store';
 
 const bytes = new Uint8Array(readFileSync('public/assets/levels/levels.mrg'));
 const entry = parsePackHeader(bytes).levels[0]?.[0];
@@ -72,5 +72,20 @@ describe('surplus', () => {
     ];
     expect(surplus(replays, 2).map((replay) => replay.id)).toEqual(['a']);
     expect(surplus(replays, 3)).toEqual([]);
+  });
+});
+
+describe('personalBests', () => {
+  const run = (id: string, track: number, league: number, time: number, outcome: Outcome = Outcome.Finished) =>
+    ({ id, packId: 'original', level: 0, track, league, time, date: 0, outcome }) as StoredReplay;
+
+  it('marks the fastest finish of every track and league', () => {
+    const replays = [
+      run('a', 0, 0, 5000),
+      run('b', 0, 0, 4000),
+      run('c', 0, 1, 9000),
+      run('d', 1, 0, 0, Outcome.Crashed),
+    ];
+    expect([...personalBests(replays)].sort()).toEqual(['b', 'c']);
   });
 });

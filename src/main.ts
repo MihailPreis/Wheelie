@@ -166,13 +166,14 @@ async function main(): Promise<void> {
   };
   new ResizeObserver(layout).observe(canvas);
 
+  const shareBaseUrl = resolveShareBaseUrl(import.meta.env.VITE_SHARE_BASE_URL, location);
   const app = new App(
     pack,
     original,
     library,
     replayStore,
     base,
-    resolveShareBaseUrl(import.meta.env.VITE_SHARE_BASE_URL, location),
+    shareBaseUrl,
     import.meta.env.VITE_SHORT_LINK_API?.trim() || null,
     sprites,
     game,
@@ -193,6 +194,9 @@ async function main(): Promise<void> {
       drafts.clear();
     },
   );
+  // `?embed=1` with a replay link shows that replay inside another page.
+  const embedded = new URLSearchParams(location.search).has('embed') && isReplayFragment(location.hash);
+  if (embedded) app.embedUrl = shareBaseUrl;
   if (matchMedia('(pointer: coarse)').matches) input.touch(-1, null);
   input.touchEnd(-1);
 
