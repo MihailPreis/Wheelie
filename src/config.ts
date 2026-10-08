@@ -1,3 +1,6 @@
+/** The version in package.json. */
+export const APP_VERSION: string = __APP_VERSION__;
+
 export const APP_NAME = 'Wheelie!';
 export const APP_TAGLINE = 'An unofficial fan-made web port of Gravity Defied';
 

@@ -1,4 +1,4 @@
-import { APP_NAME } from '../config';
+import { APP_NAME, APP_VERSION } from '../config';
 import type { Strings } from './strings';
 
 /** Russian. Keys and order follow the English table in `strings.ts`. */
@@ -235,7 +235,7 @@ export const RU: Strings = {
 <b>Музыка: Вкл/Выкл</b><br>По умолчанию: &lt;Вкл&gt;<br>Фоновая музыка.<br><br>
 <b>Звук: Вкл/Выкл</b><br>По умолчанию: &lt;Вкл&gt;<br>Двигатель и звуковые эффекты.<br><br>
 <b>Очистить рекорды</b><br>Удаляет рекорды. Там же — «Полный сброс»: игра возвращается в исходное состояние (настройки, рекорды, открытые уровни и лиги).`,
-  aboutText: `<b>${APP_NAME}</b><br>Неофициальный фанатский веб-порт Gravity Defied.<br><br>
+  aboutText: `<b>${APP_NAME}</b> ${APP_VERSION}<br>Неофициальный фанатский веб-порт Gravity Defied.<br><br>
 Это фанатский проект. Он не связан с Codebrew Software, не одобрен ею и не имеет к ней отношения. Все права на оригинальную Gravity Defied, её название, логотип, бренд и оригинальные материалы принадлежат Codebrew Software.<br><br>
 <b>Gravity Defied - Trial Racing</b> — Codebrew Software<br>codebrew.se &copy; 2004<br><br>
 <b>Gravity Defied Classic</b> для Android — Григорий Клюшников и Евгений Зиновьев<br>gdtr.net &copy; 2014<br><br>
@@ -285,6 +285,11 @@ export const RU: Strings = {
   backupReading: (done, total) => `Проверка заездов.. ${done} из ${total}`,
   backupRead: (taken, known, skipped) =>
     `Добавлено заездов: ${taken}, уже было: ${known}${skipped > 0 ? `, не подошло: ${skipped}` : ''}. Прогресс, рекорды и достижения пересчитаны по ним.`,
+  updateReady: 'Готова новая версия. Перезапустите игру из главного меню.',
+  updateNow: 'Перезапустить с новой версией',
+  installApp: 'Установить как приложение',
+  installAppManual:
+    'Чтобы установить игру на это устройство, откройте в браузере меню «Поделиться» и выберите «На экран „Домой“». После этого игра запускается со своего значка, на весь экран, и работает без сети.',
 
   crashed: 'Авария',
   wheelie: 'Wheelie!',

@@ -103,6 +103,30 @@ test('a riding key is changed in the options, and the browser Back button steps 
   await expect(title(page)).toHaveText('Ingame');
 });
 
+test('a new version and installation as an app are offered in the main menu', async ({ page }) => {
+  await expect(items(page)).toHaveCount(9);
+  await page.evaluate(() => {
+    const event = Object.assign(new Event('beforeinstallprompt'), {
+      prompt: () => {
+        document.title = 'prompted';
+        return Promise.resolve();
+      },
+    });
+    window.dispatchEvent(event);
+  });
+  await expect(items(page).last()).toHaveText('Install as an app');
+  await pick(page, 'Install as an app');
+  await expect(page).toHaveTitle('prompted');
+
+  await page.evaluate(() =>
+    (window as unknown as { wheelie: { app: { updateAvailable(): void } } }).wheelie.app.updateAvailable(),
+  );
+  await expect(page.locator('.toast')).toContainText('A new version is ready');
+  await expect(items(page).first()).toHaveText('Restart with the new version');
+  await pick(page, 'About');
+  await expect(texts(page).first()).toContainText(/Wheelie! \d+\.\d+\.\d+/);
+});
+
 test('locked tracks cannot be started', async ({ page }) => {
   await press(page, 'Enter');
   await expect(title(page)).toHaveText('Play');

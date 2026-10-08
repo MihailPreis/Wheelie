@@ -245,13 +245,39 @@ async function main(): Promise<void> {
   });
 
   // A handle for the browser tests, which cannot ride a track to the finish by themselves.
-  if (import.meta.env.DEV) Object.assign(window, { wheelie: { game } });
+  if (import.meta.env.DEV) Object.assign(window, { wheelie: { game, app } });
 
   // Offline play and installation as an app. Development always loads fresh code.
   if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+    // A worker taking over a page that already had one means a new version has been downloaded.
+    const hadWorker = navigator.serviceWorker.controller !== null;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadWorker) app.updateAvailable();
+    });
     navigator.serviceWorker
       .register(`${base}sw.js`)
+      .then((registration) => {
+        // An installed app can stay open for days; look for a new version whenever it comes back.
+        document.addEventListener('visibilitychange', () => {
+          if (!document.hidden) registration.update().catch(() => undefined);
+        });
+      })
       .catch((error) => console.warn('Offline mode is unavailable:', error));
+  }
+
+  // Installing as an app: browsers that support it say so with an event; Safari on iPhone and
+  // iPad has only its Share menu. Inside somebody else's page neither applies.
+  if (window.top === window) {
+    window.addEventListener('beforeinstallprompt', (event) => {
+      event.preventDefault();
+      app.installOffer = () => void (event as Event & { prompt(): Promise<unknown> }).prompt();
+      app.menuChanged();
+    });
+    window.addEventListener('appinstalled', () => {
+      app.installOffer = null;
+      app.menuChanged();
+    });
+    if ('standalone' in navigator && navigator.standalone === false) app.installOffer = 'manual';
   }
 
   layout();

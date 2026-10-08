@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import type { Plugin } from 'vite';
@@ -54,8 +55,11 @@ function serviceWorker(): Plugin {
   };
 }
 
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
+
 export default defineConfig({
   plugins: [siteUrl(), serviceWorker()],
+  define: { __APP_VERSION__: JSON.stringify(version) },
   // Relative asset paths: the same build runs under a GitHub Pages subpath and inside the itch.io iframe.
   base: './',
   build: {

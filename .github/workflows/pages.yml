@@ -84,6 +84,34 @@ jobs:
           path: itch/*.zip
           if-no-files-found: error
 
+      # The same build goes to itch.io, if the repository secret BUTLER_API_KEY is set
+      # (an API key from https://itch.io/user/settings/api-keys). The repository variable
+      # ITCH_TARGET names the page and channel, e.g. "mprice/wheelie:html5".
+      - name: Look for the itch.io key
+        id: itch
+        if: steps.detect.outputs.ready == 'true'
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          ITCH_TARGET: ${{ vars.ITCH_TARGET }}
+        run: |
+          if [ -n "$BUTLER_API_KEY" ] && [ -n "$ITCH_TARGET" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::BUTLER_API_KEY or ITCH_TARGET is not set — not publishing to itch.io."
+          fi
+
+      - name: Publish to itch.io
+        if: steps.itch.outputs.ready == 'true'
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          ITCH_TARGET: ${{ vars.ITCH_TARGET }}
+        run: |
+          curl -sSfL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -q butler.zip -d butler
+          chmod +x butler/butler
+          version="$(node -p "require('./package.json').version")"
+          ./butler/butler push dist "$ITCH_TARGET" --userversion "$version"
+
       - name: Upload Pages artifact
         if: steps.detect.outputs.ready == 'true'
         uses: actions/upload-pages-artifact@v3

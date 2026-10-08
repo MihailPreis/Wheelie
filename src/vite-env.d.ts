@@ -7,6 +7,9 @@ interface ImportMetaEnv {
   readonly VITE_SHORT_LINK_API?: string;
 }
 
+/** The version in package.json, put in by the build. */
+declare const __APP_VERSION__: string;
+
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }

@@ -1,4 +1,4 @@
-import { APP_NAME } from '../config';
+import { APP_NAME, APP_VERSION } from '../config';
 import { readJson, writeJson } from '../storage/store';
 import { RU } from './strings-ru';
 
@@ -260,7 +260,7 @@ The keysets apply to the digit keys and to the on-screen keypad, whose buttons s
 <b>Music: On/Off</b><br>Default: &lt;On&gt;<br>Turns the background music on and off.<br><br>
 <b>Sound: On/Off</b><br>Default: &lt;On&gt;<br>Turns the engine and the sound effects on and off.<br><br>
 <b>Clear highscore</b><br>Lets you clear the highscores. Here you can also do a "Full Reset" which will reset the game to its original state (clear settings, highscores, unlocked levels and leagues).`,
-  aboutText: `<b>${APP_NAME}</b><br>An unofficial fan-made web port of Gravity Defied.<br><br>
+  aboutText: `<b>${APP_NAME}</b> ${APP_VERSION}<br>An unofficial fan-made web port of Gravity Defied.<br><br>
 This is a fan project. It is not affiliated with, endorsed by or connected to Codebrew Software. All rights to the original Gravity Defied, its name, logo, brand and original assets belong to Codebrew Software.<br><br>
 <b>Gravity Defied - Trial Racing</b> by Codebrew Software<br>codebrew.se &copy; 2004<br><br>
 <b>Gravity Defied Classic</b> for Android by Gregory Klyushnikov and Evgeny Zinoviev<br>gdtr.net &copy; 2014<br><br>
@@ -310,6 +310,11 @@ Source code, under the GNU GPL v2:<br>github.com/MihailPreis/Wheelie`,
   backupReading: (done: number, total: number) => `Checking the runs.. ${done} of ${total}`,
   backupRead: (taken: number, known: number, skipped: number) =>
     `${taken} runs added, ${known} were here already${skipped > 0 ? `, ${skipped} could not be used` : ''}. Progress, high scores and achievements were worked out from them.`,
+  updateReady: 'A new version is ready. Restart the game from the main menu.',
+  updateNow: 'Restart with the new version',
+  installApp: 'Install as an app',
+  installAppManual:
+    'To install the game on this device, open the Share menu of the browser and choose "Add to Home Screen". The game then starts from its own icon, full screen, and works without a connection.',
 
   crashed: 'Crashed',
   wheelie: 'Wheelie!',

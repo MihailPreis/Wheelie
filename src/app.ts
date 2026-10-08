@@ -1453,10 +1453,28 @@ export class App {
     return { kind: 'action', label, run: () => this.open(builder) };
   }
 
+  /** A newer version of the game has been downloaded and starts with the next load of the page. */
+  private updateReady = false;
+  /** Asks the browser to install the game as an app; 'manual' where the player has to do it by hand. */
+  installOffer: (() => void) | 'manual' | null = null;
+
+  /** Something the main menu shows has changed. */
+  menuChanged(): void {
+    if (this.current === this.mainMenu) this.refresh();
+  }
+
+  updateAvailable(): void {
+    if (this.updateReady) return;
+    this.updateReady = true;
+    this.toasts.show(S.updateReady);
+    if (this.current === this.mainMenu) this.refresh();
+  }
+
   private readonly mainMenu: ScreenBuilder = () => ({
     title: S.main,
     back: null,
     items: [
+      ...(this.updateReady ? [{ kind: 'action' as const, label: S.updateNow, run: () => location.reload() }] : []),
       this.link(S.playMenu, this.playMenu),
       { kind: 'action', label: S.daily, run: () => void this.openDaily() },
       { kind: 'action', label: S.mods, run: () => this.open(this.mods.menu) },
@@ -1466,6 +1484,18 @@ export class App {
       this.link(S.options, this.optionsMenu(this.mainMenu)),
       this.link(S.help, this.helpMenu(this.mainMenu)),
       this.link(S.about, this.textScreen(S.about, S.aboutText, this.mainMenu)),
+      ...(this.installOffer
+        ? [
+            {
+              kind: 'action' as const,
+              label: S.installApp,
+              run: () => {
+                if (typeof this.installOffer === 'function') this.installOffer();
+                else this.open(this.textScreen(S.installApp, S.installAppManual, this.mainMenu));
+              },
+            },
+          ]
+        : []),
     ],
   });
 
