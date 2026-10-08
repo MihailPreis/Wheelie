@@ -270,6 +270,9 @@ export const RU: Strings = {
   editorPadHint:
     'Стик двигает. A — взять или отпустить, X — добавить точку, Y — удалить, бамперы — по точкам, триггеры — масштаб, Start — тест, B — выход.',
   sharedTrack: 'Трасса по ссылке',
+  dailyPast: 'Прошлые дни',
+  dailyBestPast: 'Ваш лучший результат',
+  dailyNewBestPast: 'Ваш лучший результат на этой трассе!',
 
   crashed: 'Авария',
   wheelie: 'Wheelie!',

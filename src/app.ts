@@ -10,7 +10,17 @@ import { analyseRun } from './achievements/analyse';
 import type { Music } from './audio/music';
 import type { Sound } from './audio/sound';
 import { PHYSICS_VERSION } from './core/version';
-import { dailyBest, dailyStreak, dayLabel, dayOf, parseCandidates, pickDaily, recordDaily } from './daily/daily';
+import {
+  type Candidate,
+  dailyBest,
+  dailyBestEver,
+  dailyStreak,
+  dayLabel,
+  dayOf,
+  parseCandidates,
+  pickDaily,
+  recordDaily,
+} from './daily/daily';
 import type { Drafts } from './editor/drafts';
 import type { Editor } from './editor/editor';
 import { type EditorTrack, toTrackData } from './editor/model';
@@ -60,6 +70,9 @@ import type { Toasts } from './ui/toast';
 
 /** Smaller side of the picture, in pixels, for each value of the Screen option. */
 const CLASSIC_SCREENS = [0, 240, 176];
+
+/** How far back the archive of daily tracks goes. */
+const DAILY_ARCHIVE_DAYS = 30;
 
 /** Three seconds of riding; shorter unfinished runs are not kept. */
 const MIN_UNFINISHED_TICKS = 200;
@@ -116,7 +129,16 @@ export class App {
   /** The pack the track being ridden belongs to; not the active pack on a daily track. */
   private runPack: Pack;
   /** The daily track, once it has been looked up. */
-  private daily: { day: number; pack: Pack; level: number; track: number; league: number } | null = null;
+  private daily: {
+    day: number;
+    pack: Pack;
+    level: number;
+    track: number;
+    league: number;
+    /** False for the track of a day gone by, opened from the archive. */
+    today: boolean;
+  } | null = null;
+  private dailyCandidates: Candidate[] | null = null;
   /** The run in progress is on the daily track. */
   private ridingDaily = false;
   private readonly padNavigator = new GamepadNavigator();
@@ -643,32 +665,53 @@ export class App {
 
   // ---- the daily track ---------------------------------------------------------------------
 
-  /** Looks up today's track, fetching its pack if need be, and shows it. */
-  private async openDaily(): Promise<void> {
+  /** Looks up the track of a day — today's unless told otherwise — fetching its pack if need be. */
+  private async openDaily(past: number | null = null): Promise<void> {
     this.open(() => ({ title: S.daily, back: null, items: [{ kind: 'text', html: S.downloading }] }));
-    const day = dayOf(Date.now());
+    const today = dayOf(Date.now());
+    const day = past ?? today;
     try {
       if (this.daily?.day !== day) {
-        const response = await fetch(`${this.baseUrl}assets/mods/daily.json`);
-        if (!response.ok) throw new Error('No list of daily tracks');
-        const pick = pickDaily(parseCandidates(await response.json()), day);
+        if (!this.dailyCandidates) {
+          const response = await fetch(`${this.baseUrl}assets/mods/daily.json`);
+          if (!response.ok) throw new Error('No list of daily tracks');
+          this.dailyCandidates = parseCandidates(await response.json());
+        }
+        const pick = pickDaily(this.dailyCandidates, day);
         const pack = pick ? await this.mods.obtain(pick.packId) : null;
         if (!pick || !pack?.levels[pick.level]?.[pick.track]) throw new Error('No daily track');
-        this.daily = { day, pack, level: pick.level, track: pick.track, league: pick.league };
+        this.daily = { day, pack, level: pick.level, track: pick.track, league: pick.league, today: day === today };
       }
     } catch {
-      this.alert(S.daily, S.dailyUnavailable, () => this.open(this.mainMenu));
+      this.alert(S.daily, S.dailyUnavailable, () => this.open(past === null ? this.mainMenu : this.dailyArchive));
       return;
     }
     this.open(this.dailyScreen);
   }
 
+  /** The tracks of the days gone by. They can still be ridden; only the streak is beyond mending. */
+  private readonly dailyArchive: ScreenBuilder = () => {
+    const back = () => void this.openDaily();
+    const today = dayOf(Date.now());
+    const items: MenuItem[] = [];
+    for (let day = today - 1; day >= today - DAILY_ARCHIVE_DAYS; day--) {
+      const best = dailyBestEver(day);
+      items.push({
+        kind: 'action',
+        label: `${dayLabel(day)} - ${best === null ? '---' : formatScoreTime(Math.floor(best / 10))}`,
+        run: () => void this.openDaily(day),
+      });
+    }
+    items.push({ kind: 'action', label: S.back, run: back });
+    return { title: S.dailyPast, back, items };
+  };
+
   private readonly dailyScreen: ScreenBuilder = () => {
     const daily = this.daily;
-    const back = () => this.open(this.mainMenu);
+    const back = () => (daily && !daily.today ? this.open(this.dailyArchive) : this.open(this.mainMenu));
     if (!daily) return { title: S.daily, back, items: [{ kind: 'action', label: S.back, run: back }] };
-    const best = dailyBest(daily.day);
-    const streak = dailyStreak(daily.day);
+    const best = daily.today ? dailyBest(daily.day) : dailyBestEver(daily.day);
+    const streak = dailyStreak(dayOf(Date.now()));
     const dim = (label: string, value: string): MenuItem => ({
       kind: 'text',
       html: `<span class="menu-dim">${label}:</span> ${escapeHtml(value)}`,
@@ -681,10 +724,14 @@ export class App {
         dim(S.date, dayLabel(daily.day)),
         dim(S.league, LEAGUE_NAMES[daily.league] ?? ''),
         dim(S.levels, daily.pack.author ? S.packBy(daily.pack.name, daily.pack.author) : daily.pack.name),
-        dim(S.dailyBest, best === null ? S.dailyNotYet : formatScoreTime(Math.floor(best / 10))),
-        dim(S.dailyStreak, S.dailyDays(streak)),
+        dim(
+          daily.today ? S.dailyBest : S.dailyBestPast,
+          best === null ? S.dailyNotYet : formatScoreTime(Math.floor(best / 10)),
+        ),
+        ...(daily.today ? [dim(S.dailyStreak, S.dailyDays(streak))] : []),
         { kind: 'space', size: 10 },
         { kind: 'action', label: `${S.start}>`, run: () => void this.playDaily() },
+        ...(daily.today ? [this.link(S.dailyPast, this.dailyArchive)] : []),
         { kind: 'action', label: S.back, run: back },
       ],
     };
@@ -737,17 +784,27 @@ export class App {
   private dailyFinished(result: RunResult): void {
     const daily = this.daily;
     if (!daily) return;
-    const improved = recordDaily(daily.day, result.time);
-    const streak = dailyStreak(daily.day);
+    // The day may have turned over while the track was being ridden; the run still belongs to it.
+    const improved = recordDaily(daily.day, result.time, !daily.today);
+    const streak = daily.today ? dailyStreak(daily.day) : 0;
     this.earn([...(streak >= 3 ? (['daily3'] as const) : []), ...(streak >= 7 ? (['daily7'] as const) : [])]);
-    const best = dailyBest(daily.day) ?? result.time;
+    const best = dailyBestEver(daily.day) ?? result.time;
     const screen: ScreenBuilder = () => ({
       title: S.finished,
       back: null,
       items: [
         { kind: 'text', html: formatScoreTime(Math.floor(result.time / 10)), big: true },
-        { kind: 'text', html: improved ? S.dailyNewBest : `${S.dailyBest}: ${formatScoreTime(Math.floor(best / 10))}` },
-        { kind: 'text', html: `${S.dailyStreak}: ${S.dailyDays(dailyStreak(daily.day))}` },
+        {
+          kind: 'text',
+          html: improved
+            ? daily.today
+              ? S.dailyNewBest
+              : S.dailyNewBestPast
+            : `${daily.today ? S.dailyBest : S.dailyBestPast}: ${formatScoreTime(Math.floor(best / 10))}`,
+        },
+        ...(daily.today
+          ? [{ kind: 'text' as const, html: `${S.dailyStreak}: ${S.dailyDays(dailyStreak(daily.day))}` }]
+          : []),
         ...this.freshItems(),
         { kind: 'space', size: 10 },
         { kind: 'action', label: S.restart, run: () => void this.playDaily() },

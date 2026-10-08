@@ -62,6 +62,8 @@ export function pickDaily(candidates: readonly Candidate[], day: number): DailyP
 // ---- the player's results -----------------------------------------------------------------
 
 const key = (day: number) => `daily.${day}`;
+/** Results on a day's track made after the day was over; they count for nothing but themselves. */
+const lateKey = (day: number) => `dailyLate.${day}`;
 
 /** The player's best time on a day's track in milliseconds, or null if it was not finished. */
 export function dailyBest(day: number): number | null {
@@ -69,11 +71,22 @@ export function dailyBest(day: number): number | null {
   return typeof stored?.time === 'number' && stored.time > 0 ? stored.time : null;
 }
 
-/** Records a finish. Returns true if it is the best of the day so far. */
-export function recordDaily(day: number, time: number): boolean {
-  const best = dailyBest(day);
+/** The player's best time on a day's track whenever it was ridden, or null. */
+export function dailyBestEver(day: number): number | null {
+  const late = readJson<{ time?: unknown }>(lateKey(day));
+  const times = [dailyBest(day), typeof late?.time === 'number' && late.time > 0 ? late.time : null];
+  const made = times.filter((time): time is number => time !== null);
+  return made.length > 0 ? Math.min(...made) : null;
+}
+
+/**
+ * Records a finish. `late` marks a run on the track of a day gone by, which is kept apart so that
+ * it cannot mend a broken streak. Returns true if it is the best on that track so far.
+ */
+export function recordDaily(day: number, time: number, late = false): boolean {
+  const best = late ? dailyBestEver(day) : dailyBest(day);
   if (best !== null && best <= time) return false;
-  writeJson(key(day), { time });
+  writeJson(late ? lateKey(day) : key(day), { time });
   return true;
 }
 

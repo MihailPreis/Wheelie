@@ -295,6 +295,9 @@ Source code, under the GNU GPL v2:<br>github.com/MihailPreis/Wheelie`,
   editorPadHint:
     'Stick moves. A picks up or puts down, X adds a point, Y deletes, bumpers step along the points, triggers zoom, Start tests, B leaves.',
   sharedTrack: 'Shared track',
+  dailyPast: 'Past days',
+  dailyBestPast: 'Your best',
+  dailyNewBestPast: 'Your best on this track!',
 
   crashed: 'Crashed',
   wheelie: 'Wheelie!',

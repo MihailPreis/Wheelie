@@ -3,6 +3,7 @@ import { removeAll } from '../storage/store';
 import {
   type Candidate,
   dailyBest,
+  dailyBestEver,
   dailyStreak,
   dayLabel,
   dayOf,
@@ -61,5 +62,19 @@ describe('daily track', () => {
     // Today not ridden yet: yesterday's streak still stands.
     expect(dailyStreak(101)).toBe(2);
     expect(dailyStreak(102)).toBe(0);
+  });
+
+  it('keeps a late run on a past track apart from the streak', () => {
+    removeAll('daily');
+    recordDaily(100, 5000);
+    recordDaily(98, 5000);
+    expect(recordDaily(99, 3000, true)).toBe(true);
+    expect(recordDaily(99, 4000, true)).toBe(false);
+    expect(dailyBest(99)).toBeNull();
+    expect(dailyBestEver(99)).toBe(3000);
+    expect(dailyStreak(100)).toBe(1);
+    // A late run beats the time made on the day, but does not replace it.
+    expect(recordDaily(100, 4000, true)).toBe(true);
+    expect([dailyBest(100), dailyBestEver(100)]).toEqual([5000, 4000]);
   });
 });

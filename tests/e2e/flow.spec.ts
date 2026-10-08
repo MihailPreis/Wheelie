@@ -484,6 +484,24 @@ test('the daily track is offered, ridden and remembered apart from the packs', a
   await expect(texts(page).first()).toHaveText(name ?? '');
   await expect(texts(page).nth(4)).toContainText('00:12.34');
   await expect(texts(page).nth(5)).toContainText('1');
+
+  // Yesterday's track can still be ridden, but it does not add to the days in a row.
+  await pick(page, 'Past days');
+  await expect(title(page)).toHaveText('Past days');
+  await expect(items(page)).toHaveCount(31);
+  await press(page, 'Enter');
+  await expect(items(page).first()).toHaveText('Start>', { timeout: 15_000 });
+  await expect(texts(page)).toHaveCount(5);
+  await pick(page, 'Start>');
+  await expect(page.locator('.menu')).toBeHidden();
+  await finishRun(page, 20_000);
+  await expect(texts(page).nth(1)).toHaveText('Your best on this track!');
+  await pick(page, 'Daily track');
+  await expect(texts(page).nth(4)).toContainText('00:20.00');
+  await press(page, 'Escape');
+  await expect(items(page).first()).toContainText('00:20.00');
+  await press(page, 'Escape');
+  await expect(texts(page).nth(5)).toContainText('1');
   await press(page, 'Escape');
   await pick(page, 'Play Menu');
   await expect(page.locator('.menu-item', { hasText: 'Track' }).locator('.menu-value')).toHaveText('Intro');
