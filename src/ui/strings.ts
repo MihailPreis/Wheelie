@@ -271,6 +271,9 @@ This is a fan project. It is not affiliated with, endorsed by or connected to Co
 <b>Level packs</b> in the Mods menu were made by the gdtr.net community; each one shows its author.<br><br>
 <b>Music</b>: "Go" by Abstraction, from the album Three Red Hearts (public domain)<br><br>
 Source code, under the GNU GPL v2:<br>github.com/MihailPreis/Wheelie`,
+  search: 'Search',
+  nothingFound: 'Nothing found.',
+  install: 'Install',
 
   crashed: 'Crashed',
   wheelie: 'Wheelie!',

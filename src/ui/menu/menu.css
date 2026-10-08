@@ -216,3 +216,19 @@
 .menu-dim {
   color: #888;
 }
+
+.menu-input {
+  flex: 1;
+  min-width: 0;
+  max-width: calc(var(--dp) * 240px);
+  padding: 0;
+  border: 0;
+  border-bottom: calc(var(--dp) * 1px) solid #000;
+  border-radius: 0;
+  outline: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  user-select: text;
+  -webkit-user-select: text;
+}

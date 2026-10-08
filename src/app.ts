@@ -97,6 +97,7 @@ const MENU_KEYS: Readonly<Record<string, MenuKey>> = {
   Backspace: 'back',
 };
 const KEYPAD_KEYS: Readonly<Record<number, MenuKey>> = { 2: 'up', 8: 'down', 4: 'left', 6: 'right', 5: 'fire' };
+const TYPING_KEYS = new Set(['ArrowUp', 'ArrowDown', 'Enter', 'NumpadEnter', 'Escape']);
 const PAUSE_KEYS = new Set(['Escape', 'KeyP']);
 
 /**
@@ -320,6 +321,8 @@ export class App {
     if (this.editor.visible) return this.editor.key(event);
     if (this.menu.visible) {
       if (event.key.length === 1 && this.menu.typeLetter(event.key)) return true;
+      // While a field is being typed into, only the keys that leave it belong to the menu.
+      if (this.menu.typing && !TYPING_KEYS.has(event.code)) return false;
       const key = MENU_KEYS[event.code];
       if (!key) return false;
       // Holding a key repeats movement but not selection.

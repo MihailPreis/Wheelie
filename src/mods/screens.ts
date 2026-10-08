@@ -6,6 +6,7 @@ import {
   loadCatalog,
   SORT_ORDERS,
   type SortOrder,
+  searchPacks,
   sortPacks,
   trackTotal,
 } from './catalog';
@@ -31,6 +32,7 @@ export interface ModsHost {
 const PAGE = 50;
 /** Nothing that calls itself a level pack is anywhere near this big. */
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_NAME = 40;
 
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
 const field = (label: string, value: string): MenuItem => ({
@@ -57,6 +59,7 @@ export class ModsScreens {
   private installed = new Map<string, InstalledPack>();
   private order: SortOrder = 'popular';
   private shown = PAGE;
+  private query = '';
 
   constructor(
     private readonly host: ModsHost,
@@ -102,9 +105,20 @@ export class ModsScreens {
   }
 
   private readonly downloadScreen: ScreenBuilder = () => {
-    const packs = sortPacks(this.catalog ?? [], this.order);
+    const packs = searchPacks(sortPacks(this.catalog ?? [], this.order), this.query);
     const back = () => this.host.open(this.menu);
     const items: MenuItem[] = [
+      {
+        kind: 'input',
+        label: S.search,
+        value: this.query,
+        maxLength: 40,
+        change: (value) => {
+          this.query = value.trim();
+          this.shown = PAGE;
+          this.host.open(this.downloadScreen);
+        },
+      },
       {
         kind: 'option',
         label: S.sortBy,
@@ -125,6 +139,7 @@ export class ModsScreens {
         run: () => this.host.open(this.catalogPackScreen(pack)),
       });
     }
+    if (packs.length === 0) items.push({ kind: 'text', html: S.nothingFound });
     if (packs.length > this.shown) {
       items.push({
         kind: 'action',
@@ -330,9 +345,36 @@ export class ModsScreens {
       this.host.alert(S.mods, S.damagedPack, then);
       return;
     }
-    this.busy(S.installMrg, S.installing);
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const name = file.name.replace(/\.mrg$/i, '').slice(0, 40) || S.installMrg;
-    await this.store(await fileId(bytes), name, '', bytes, then);
+    try {
+      buildPack('', '', '', bytes);
+    } catch {
+      this.host.alert(S.mods, S.damagedPack, then);
+      return;
+    }
+    // The file name is only a suggestion: most of these files are called levels.mrg.
+    let name = file.name.replace(/\.mrg$/i, '').slice(0, MAX_NAME);
+    const install = async () => {
+      this.busy(S.installMrg, S.installing);
+      await this.store(await fileId(bytes), name.trim() || S.installMrg, '', bytes, then);
+    };
+    this.host.open(() => ({
+      title: S.installMrg,
+      back: then,
+      items: [
+        {
+          kind: 'input',
+          label: S.name,
+          value: name,
+          maxLength: MAX_NAME,
+          change: (value) => {
+            name = value;
+          },
+        },
+        { kind: 'space', size: 10 },
+        { kind: 'action', label: S.install, run: () => void install() },
+        { kind: 'action', label: S.back, run: then },
+      ],
+    }));
   }
 }

@@ -19,6 +19,14 @@ export type MenuItem =
       toggle?: boolean;
       change: (value: number) => void;
     }
+  | {
+      /** A line of text to type. `change` gets it when Enter is pressed or the field is left. */
+      kind: 'input';
+      label: string;
+      value: string;
+      maxLength: number;
+      change: (value: string) => void;
+    }
   | { kind: 'text'; html: string; big?: boolean; medal?: number }
   | { kind: 'space'; size: number };
 
@@ -93,7 +101,7 @@ export class MenuView {
     this.rows = screen.items.map((item, index) => {
       const row = this.renderItem(item, index);
       this.list.append(row);
-      return item.kind === 'action' || item.kind === 'option' ? row : null;
+      return item.kind === 'action' || item.kind === 'option' || item.kind === 'input' ? row : null;
     });
 
     const wanted = previous ?? this.remembered.get(screen.title) ?? -1;
@@ -124,6 +132,21 @@ export class MenuView {
     row.append(helmet);
     if (item.kind === 'action') {
       row.append(el('span', 'menu-label', item.label));
+    } else if (item.kind === 'input') {
+      row.append(el('span', 'menu-label', `${item.label}: `));
+      const input = el('input', 'menu-input');
+      input.type = 'text';
+      input.value = item.value;
+      input.maxLength = item.maxLength;
+      input.setAttribute('aria-label', item.label);
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      input.addEventListener('change', () => item.change(input.value));
+      input.addEventListener('focus', () => this.select(index));
+      row.append(input);
+      row.addEventListener('pointermove', () => this.select(index));
+      row.addEventListener('click', () => input.focus());
+      return row;
     } else {
       row.append(el('span', 'menu-label', `${item.label}: `));
       const locked = item.unlocked !== undefined && item.value > item.unlocked;
@@ -143,6 +166,21 @@ export class MenuView {
     this.rows[this.selected]?.classList.remove('selected');
     this.selected = index;
     this.rows[index]?.classList.add('selected');
+    const field = this.rows[index]?.querySelector('input');
+    const focused = document.activeElement;
+    // The highlight and the caret go together when moving with the keys.
+    if (!field && focused instanceof HTMLInputElement && this.list.contains(focused)) focused.blur();
+  }
+
+  /** The text field of the highlighted row, if it is one. */
+  private get field(): HTMLInputElement | null {
+    return this.rows[this.selected]?.querySelector('input') ?? null;
+  }
+
+  /** True while the player is typing into a field of the menu. */
+  get typing(): boolean {
+    const focused = document.activeElement;
+    return focused instanceof HTMLInputElement && this.list.contains(focused);
   }
 
   private revealSelected(): void {
@@ -156,6 +194,7 @@ export class MenuView {
       if (this.rows[index]) {
         this.select(index);
         this.revealSelected();
+        this.field?.focus();
         return;
       }
     }
@@ -206,6 +245,14 @@ export class MenuView {
     if (!item) return true;
     if (item.kind === 'action') {
       if (key === 'fire') item.run();
+      return true;
+    }
+    if (item.kind === 'input') {
+      const field = this.field;
+      if (key !== 'fire' || !field) return true;
+      // Selecting starts typing; selecting again takes what was typed.
+      if (document.activeElement === field) field.blur();
+      else field.focus();
       return true;
     }
     if (item.kind !== 'option') return true;

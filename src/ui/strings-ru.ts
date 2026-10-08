@@ -246,6 +246,9 @@ export const RU: Strings = {
 <b>Паки уровней</b> в меню «Моды» созданы сообществом gdtr.net; у каждого указан автор.<br><br>
 <b>Музыка</b>: «Go», Abstraction, альбом Three Red Hearts (общественное достояние)<br><br>
 Исходный код под лицензией GNU GPL v2:<br>github.com/MihailPreis/Wheelie`,
+  search: 'Поиск',
+  nothingFound: 'Ничего не найдено.',
+  install: 'Установить',
 
   crashed: 'Авария',
   wheelie: 'Wheelie!',

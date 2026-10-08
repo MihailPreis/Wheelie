@@ -98,3 +98,13 @@ export async function downloadPack(baseUrl: string, pack: CatalogPack): Promise<
   if (pack.offset + pack.size > chunk.length) throw new Error('The pack lies outside its chunk');
   return chunk.slice(pack.offset, pack.offset + pack.size);
 }
+
+/** Packs whose name or author contains every word of the query. */
+export function searchPacks(packs: readonly CatalogPack[], query: string): CatalogPack[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [...packs];
+  return packs.filter((pack) => {
+    const text = `${pack.name} ${pack.author}`.toLowerCase();
+    return words.every((word) => text.includes(word));
+  });
+}

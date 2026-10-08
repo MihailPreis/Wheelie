@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseCatalog, sortPacks } from './catalog';
+import { parseCatalog, searchPacks, sortPacks } from './catalog';
 
 const row = (id: number, added: number, tracks: number[], rank: number, extra: unknown[] = []) => [
   id,
@@ -71,4 +71,16 @@ describe('sortPacks', () => {
     expect(ids('oldest')).toEqual([2, 3, 1]);
   });
   it('orders by track count', () => expect(ids('tracks')).toEqual([2, 3, 1]));
+});
+
+describe('searchPacks', () => {
+  const packs = parseCatalog(catalogue([row(1, 0, [1, 0, 0], 0), row(12, 0, [1, 0, 0], 1)]));
+
+  it('matches every word against the name and the author, whatever the case', () => {
+    expect(searchPacks(packs, 'PACK 12').map((pack) => pack.id)).toEqual([12]);
+    expect(searchPacks(packs, 'someone').length).toBe(2);
+    expect(searchPacks(packs, 'someone else')).toEqual([]);
+  });
+
+  it('keeps everything for an empty query', () => expect(searchPacks(packs, '  ').length).toBe(2));
 });

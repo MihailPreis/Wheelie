@@ -125,17 +125,41 @@ test('a finished run records a score, unlocks the next track and offers it', asy
   await expect(texts(page)).toContainText(['1. MIK 00:12.34']);
 });
 
+test('a dropped level pack file is given a name and installed', async ({ page }) => {
+  await page.evaluate(async () => {
+    const bytes = await (await fetch('assets/levels/levels.mrg')).arrayBuffer();
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([bytes], 'levels.mrg'));
+    window.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer }));
+  });
+  await expect(title(page)).toHaveText('Install levels.mrg');
+  await page.locator('.menu-input').fill('Dropped pack');
+  await pick(page, 'Install');
+  await expect(texts(page).first()).toHaveText('Levels successfully installed.');
+  await press(page, 'Enter');
+  await expect(items(page).nth(1)).toHaveText('Dropped pack');
+});
+
 test('a level pack is installed from the catalogue, played and deleted', async ({ page }) => {
   const activePack = () => page.evaluate(() => localStorage.getItem('wheelie.activePack'));
 
   await pick(page, 'Mods');
   await expect(title(page)).toHaveText('Mods');
   await press(page, 'Enter');
-  await expect(items(page).first()).toContainText('Sort by', { timeout: 10_000 });
+  await expect(items(page).first()).toContainText('Search', { timeout: 10_000 });
   expect(await items(page).count()).toBeGreaterThan(50);
 
+  // Searching narrows the list down; an empty query brings it back.
+  await press(page, 'Enter');
+  await page.keyboard.type('no such pack anywhere');
+  await press(page, 'Enter');
+  await expect(texts(page).first()).toHaveText('Nothing found.');
+  await page.locator('.menu-input').fill('');
+  await press(page, 'Enter');
+  await expect(texts(page)).toHaveCount(0);
+
   // The first pack of the list.
-  await press(page, 'ArrowDown', 'Enter');
+  await press(page, 'ArrowDown', 'ArrowDown', 'Enter');
   await expect(items(page).first()).toContainText('Install (');
   await press(page, 'Enter');
   await expect(texts(page).first()).toHaveText('Levels successfully installed.', { timeout: 10_000 });
