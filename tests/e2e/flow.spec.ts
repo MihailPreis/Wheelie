@@ -24,7 +24,44 @@ async function finishRun(page: Page, milliseconds: number): Promise<void> {
   }, milliseconds);
 }
 
+async function finishFullThrottleRun(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const { game } = (
+      window as unknown as {
+        wheelie: {
+          game: {
+            stop(): void;
+            start(): void;
+            tick(): void;
+            phase: string;
+            input: { keyDown(code: string): void; keyUp(code: string): void };
+          };
+        };
+      }
+    ).wheelie;
+    // Drive real simulation ticks; the result should not depend on wall-clock input timing.
+    game.stop();
+    game.input.keyDown('ArrowUp');
+    try {
+      for (let tick = 0; tick < 4000 && game.phase !== 'done'; tick++) game.tick();
+      if (game.phase !== 'done') throw new Error(`The full-throttle run did not finish: ${game.phase}`);
+    } finally {
+      game.input.keyUp('ArrowUp');
+      game.start();
+    }
+  });
+}
+
+async function isolateControllers(page: Page): Promise<void> {
+  // Physical controllers must not drive an automated browser; controller tests supply their own devices.
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [] });
+    Object.defineProperty(navigator, 'hid', { configurable: true, value: undefined });
+  });
+}
+
 test.beforeEach(async ({ page }) => {
+  await isolateControllers(page);
   await page.goto('/');
   // Any key skips the opening screens once loading is done.
   await page.keyboard.press('Enter');
@@ -72,6 +109,111 @@ test('options are toggled and remembered', async ({ page }) => {
   await expect(perspective).toHaveText('Off');
 });
 
+test('touch controls stay hidden in menus and pause submenus even with the old setting saved', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => localStorage.setItem('wheelie.settings', JSON.stringify({ keypadInMenu: true })));
+  await page.reload();
+  await page.keyboard.press('Enter');
+  await expect(title(page)).toHaveText('Main');
+  const touch = () =>
+    page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'touch' })));
+  const keypad = page.locator('.keypad');
+  await touch();
+  await expect(keypad).toBeHidden();
+  await pick(page, 'Options');
+  await expect(items(page)).not.toContainText(['Touch controls in menus']);
+  await expect(keypad).toBeHidden();
+  await pick(page, 'Back');
+  await pick(page, 'Play Menu');
+  await expect(keypad).toBeHidden();
+  await pick(page, 'Start>');
+  await touch();
+  await expect(keypad).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(title(page)).toHaveText('Ingame');
+  await expect(keypad).toBeHidden();
+  await pick(page, 'Options');
+  await pick(page, 'Screen');
+  await expect(keypad).toBeHidden();
+  await pick(page, 'Back');
+  await pick(page, 'Back');
+  await pick(page, 'Continue');
+  await touch();
+  await expect(keypad).toBeVisible();
+  await page.keyboard.press('Escape');
+  await pick(page, 'Exit to menu');
+  await expect(title(page)).toHaveText('Play');
+  await expect(keypad).toBeHidden();
+});
+
+test('first DualSense setup enables features and preserves manual choices through reconnect and reload', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const device = Object.assign(new EventTarget(), {
+      vendorId: 0x054c,
+      productId: 0x0ce6,
+      opened: false,
+      collections: [{ outputReports: [{ reportId: 0x31 }, { reportId: 0x32 }], children: [] }],
+      async open() {
+        this.opened = true;
+      },
+      async close() {
+        this.opened = false;
+      },
+      async sendReport() {},
+    });
+    const hid = Object.assign(new EventTarget(), {
+      calls: 0,
+      async getDevices() {
+        this.calls++;
+        return [device];
+      },
+      async requestDevice() {
+        return [device];
+      },
+    });
+    Object.defineProperty(navigator, 'hid', { configurable: true, value: hid });
+    Object.assign(window, { testHid: hid, testController: device });
+  });
+  await page.reload();
+  await page.keyboard.press('Enter');
+  await expect(title(page)).toHaveText('Main');
+  const openController = async () => {
+    await pick(page, 'Options');
+    await pick(page, 'Controls');
+    await pick(page, 'DualSense');
+    await expect(texts(page).first()).toContainText('Connected: Bluetooth');
+  };
+  const value = (label: string) => page.locator('.menu-item', { hasText: label }).locator('.menu-value');
+  await openController();
+  await expect(value('Smooth throttle and brake')).toHaveText('On');
+  await expect(value('Engine audio haptics')).toHaveText('On');
+  await expect(value('Trigger resistance')).toHaveText('Light');
+  await pick(page, 'Smooth throttle and brake');
+  await pick(page, 'Engine audio haptics');
+  await pick(page, 'Trigger resistance');
+  await pick(page, 'Off');
+  await page.evaluate(() => {
+    const { testHid, testController } = window as unknown as { testHid: EventTarget; testController: EventTarget };
+    testHid.dispatchEvent(Object.assign(new Event('disconnect'), { device: testController }));
+  });
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { testHid: { calls: number } }).testHid.calls))
+    .toBe(2);
+  await expect(texts(page).first()).toContainText('Connected: Bluetooth');
+  await expect(value('Smooth throttle and brake')).toHaveText('Off');
+  await expect(value('Engine audio haptics')).toHaveText('Off');
+  await expect(value('Trigger resistance')).toHaveText('Off');
+  await page.reload();
+  await page.keyboard.press('Enter');
+  await expect(title(page)).toHaveText('Main');
+  await openController();
+  await expect(value('Smooth throttle and brake')).toHaveText('Off');
+  await expect(value('Engine audio haptics')).toHaveText('Off');
+  await expect(value('Trigger resistance')).toHaveText('Off');
+});
+
 test('submenu footers and initial choices stay consistent across reopening', async ({ page }) => {
   const selected = page.locator('.menu-item.selected .menu-label');
   const footer = async () => {
@@ -79,6 +221,10 @@ test('submenu footers and initial choices stay consistent across reopening', asy
     await expect(page.locator('.menu-back')).toHaveCount(1);
   };
   await expect(selected).toHaveText('Play Menu');
+  await pick(page, 'Play Menu');
+  await footer();
+  await expect(items(page)).not.toContainText(['Go to Main']);
+  await pick(page, 'Back');
   await pick(page, 'Options');
   await expect(page.locator('.menu-item', { hasText: /^Music:/ }).locator('.menu-value')).toHaveText('Off');
   await footer();
@@ -119,15 +265,15 @@ test('pause offers Continue and a fallen rider is offered Restart', async ({ pag
   await expect(page.locator('.menu')).toBeHidden();
   await press(page, 'Escape');
   await expect(selected).toHaveText('Continue');
-  await expect(items(page).last()).toHaveText('Back');
+  await expect(items(page).last()).toHaveText('Exit to menu');
   await pick(page, 'Help');
   await page.locator('.menu-back').click();
   await expect(selected).toHaveText('Continue');
-  await page.locator('.menu-back').click();
+  await pick(page, 'Continue');
   await expect(page.locator('.menu')).toBeHidden();
   await press(page, 'Escape');
   await expect(selected).toHaveText('Continue');
-  await page.locator('.menu-back').click();
+  await pick(page, 'Continue');
   await page.evaluate(() => {
     const { game } = (window as unknown as { wheelie: { game: { phase: string; phaseTicks: number } } }).wheelie;
     game.phase = 'crashed';
@@ -137,7 +283,7 @@ test('pause offers Continue and a fallen rider is offered Restart', async ({ pag
   await expect(selected).toContainText('Restart:');
   await expect(items(page)).not.toContainText(['Continue']);
   await page.locator('.menu-back').click();
-  await expect(page.locator('.menu')).toBeHidden();
+  await expect(title(page)).toHaveText('Play');
 });
 
 test('a riding key is changed in the options, and the browser Back button steps back', async ({ page }) => {
@@ -261,6 +407,8 @@ test('a finished run records a score, unlocks the next track and offers it', asy
   // Back from the name screen the highlight is on Ok again.
   await press(page, 'Enter');
   await expect(texts(page)).toContainText(['Time: 00:12.34', '1. MIK 00:12.34', '1 of 10 tracks in Easy completed.']);
+  await expect(items(page)).not.toContainText(['Play Menu']);
+  await expect(page.locator('.menu-back')).toHaveCount(1);
   const next = items(page).first();
   await expect(next).toContainText('Next: ');
   await next.click();
@@ -403,6 +551,8 @@ test('a run is recorded and listed under My runs', async ({ page }) => {
 
   // Delete is the fourth action on the screen of a run.
   await press(page, 'ArrowDown', 'ArrowDown', 'ArrowDown', 'Enter');
+  await expect(title(page)).toHaveText('Delete run');
+  await pick(page, 'Yes');
   await expect(texts(page).first()).toContainText('No runs yet');
 });
 
@@ -572,7 +722,7 @@ test('a track is made in the editor, test-driven and played as a pack', async ({
   await expect(page.locator('.menu-item', { hasText: 'Track' }).locator('.menu-value')).toHaveText('Bumpy road');
 
   // A whole pack comes into the editor at once.
-  await click('Go to Main');
+  await click(/^Back$/);
   await click('Editor');
   await click(/^Copy all of/);
   await expect(texts(page).first()).toHaveText('1 tracks taken.');
@@ -587,9 +737,8 @@ test('the fastest run on a track comes back as a ghost', async ({ page }) => {
   await press(page, 'Enter', 'Enter');
   await expect(page.locator('.menu')).toBeHidden();
   expect(await hasGhost()).toBe(false);
-  await page.keyboard.down('ArrowUp');
-  await expect(title(page)).toHaveText('Finished!', { timeout: 20_000 });
-  await page.keyboard.up('ArrowUp');
+  await finishFullThrottleRun(page);
+  await expect(title(page)).toHaveText('Finished!');
   await click(/^Ok$/);
 
   // The second one races the first.
@@ -608,8 +757,8 @@ test('the fastest run on a track comes back as a ghost', async ({ page }) => {
 
   // …unless a run is picked to race against.
   await press(page, 'Escape');
-  await click(/^Play Menu$/);
-  await click('Go to Main');
+  await click(/^Exit to menu$/);
+  await click(/^Back$/);
   await click('My runs');
   await page.locator('.menu-label', { hasText: 'Intro' }).last().click();
   await click('Race this run');
@@ -633,7 +782,8 @@ test('the daily track is offered, ridden and remembered apart from the packs', a
   await expect(texts(page).nth(2)).toContainText('1');
 
   // Back on its screen the result shows, and the original tracks are untouched by it.
-  await pick(page, 'Daily track');
+  await expect(items(page)).not.toContainText(['Daily track']);
+  await pick(page, 'Exit to menu');
   await expect(texts(page).first()).toHaveText(name ?? '');
   await expect(texts(page).nth(4)).toContainText('00:12.34');
   await expect(texts(page).nth(5)).toContainText('1');
@@ -649,7 +799,7 @@ test('the daily track is offered, ridden and remembered apart from the packs', a
   await expect(page.locator('.menu')).toBeHidden();
   await finishRun(page, 20_000);
   await expect(texts(page).nth(1)).toHaveText('Your best on this track!');
-  await pick(page, 'Daily track');
+  await pick(page, 'Exit to menu');
   await expect(texts(page).nth(4)).toContainText('00:20.00');
   await press(page, 'Escape');
   await expect(items(page).first()).toContainText('00:20.00');
@@ -698,17 +848,16 @@ test('achievements are secret until earned, announced at the end of the run and 
   await pick(page, 'Play Menu');
   await pick(page, 'Start');
   await expect(page.locator('.menu')).toBeHidden();
-  await page.keyboard.down('ArrowUp');
-  await expect(title(page)).toHaveText('Finished!', { timeout: 20_000 });
-  await page.keyboard.up('ArrowUp');
+  await finishFullThrottleRun(page);
+  await expect(title(page)).toHaveText('Finished!');
   await expect(page.locator('.toast')).toHaveText('Achievement: Who needs brakes');
   await pick(page, 'Ok');
   await expect(page.locator('.menu-text', { hasText: 'Achievement: Who needs brakes' })).toContainText(
     'Finish a track without braking.',
   );
 
-  await pick(page, 'Play Menu');
-  await pick(page, 'Go to Main');
+  await pick(page, 'Exit to menu');
+  await pick(page, 'Back');
   await pick(page, 'Achievements');
   await expect(texts(page).first()).toHaveText('1 of 17 earned.');
   await expect(page.locator('.menu-text', { hasText: '???' })).toHaveCount(16);
@@ -725,6 +874,7 @@ test('achievements are secret until earned, announced at the end of the run and 
   const backup = [...readFileSync(await download.path())];
 
   const fresh = await (await browser.newContext()).newPage();
+  await isolateControllers(fresh);
   await fresh.goto('/');
   await fresh.keyboard.press('Enter');
   await expect(fresh.locator('.menu-title')).toHaveText('Main', { timeout: 10_000 });
@@ -737,7 +887,7 @@ test('achievements are secret until earned, announced at the end of the run and 
     timeout: 15_000,
   });
   await expect(fresh.locator('.toast')).toHaveText('Achievement: Who needs brakes');
-  await pick(fresh, 'Ok');
+  await pick(fresh, 'Back');
   await expect(fresh.locator('.menu-item .menu-label', { hasText: 'Intro' })).toContainText('best');
   await fresh.keyboard.press('Escape');
   await pick(fresh, 'Play Menu');

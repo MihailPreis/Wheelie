@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [] });
+    Object.defineProperty(navigator, 'hid', { configurable: true, value: undefined });
+  });
+});
+
 test('page loads and the game canvas fills the viewport', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));

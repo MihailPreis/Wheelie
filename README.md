@@ -62,9 +62,17 @@ pnpm dev          # start the dev server
 pnpm check        # lint and type-check
 pnpm test         # unit tests, including the physics comparison against the original
 pnpm test:e2e     # browser tests: smoke test and cross-engine determinism
+pnpm test:regression # local checks, unit tests and Chromium/WebKit browser regression
 pnpm build        # production build in dist/
 pnpm package:itch # the same build zipped for itch.io; needs VITE_SHARE_BASE_URL
 ```
+
+`test:regression` is an opt-in local suite. It starts its own production and development servers
+on ports 4173 and 4174, so stop existing servers on those ports first. Install the browser binaries
+with `pnpm exec playwright install chromium webkit` if needed. The HTML report is saved to
+`playwright-report/local/`; failures retain screenshots and traces in `test-results/`.
+File-sharing tests substitute the browser APIs; test the operating system's share sheet and
+physical controller feedback on the actual devices. This command does not change the CI workflow.
 
 ### Level packs
 
@@ -131,3 +139,5 @@ This is a fan project. It is not affiliated with, endorsed by or connected to Co
 ## License
 
 [GNU General Public License v2.0](LICENSE.txt), the same license as the Android port this project is derived from.
+
+Game events can be sent directly to GA4 from the embedded game. See [analytics configuration and events](docs/analytics.md). Development and localhost do not send analytics.
