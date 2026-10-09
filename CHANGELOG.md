@@ -6,6 +6,43 @@ its About screen.
 A change to the physics is a new `PHYSICS_VERSION` and is called out here: replays recorded with
 another physics version cannot be played back.
 
+## Unreleased
+
+## 1.2.0 — 2026-10-09
+
+### Added
+
+- Direct GA4 events for runs, pauses, replays, editor testing, mod installations, exports and
+  achievements. Select separate streams for GitHub Pages and itch.io at runtime, including the
+  itch.io game iframe. Development and localhost do not send analytics; blocked analytics do
+  not prevent the game from starting.
+- An opt-in local regression command with Chromium and WebKit coverage for gameplay, menus,
+  controller settings, replay timing, sharing and analytics blocking.
+
+### Improved
+
+- Hide distant perspective grid lines behind opaque white track surfaces on steep terrain.
+- Reduce rendering work on long tracks with binary segment lookup, local shadow clipping and
+  fewer allocations; avoid repainting white track surfaces and unnecessary canvas style writes.
+- Give the replay timeline a 44px touch target on small screens and keep controls visible while focused.
+- Prepare PNG/GIF files before sharing them with a fresh user gesture; retain prepared files
+  after cancellation or failure and provide a download fallback.
+
+### Fixed
+
+- Show race time in the replay player from the start flag to the finish, including after seeking.
+- End runs when the whole bike leaves the track or falls below its surface; hide shadows outside
+  the track without changing the original physics.
+- Use a single Exit to menu footer on riding and finish screens, separate from Continue or Restart.
+  Submenus return to their parent without resuming the game; touch riding controls stay hidden in menus.
+- Cancel high-score name edits with Back, preserve results when leaving the finish screen,
+  remove duplicate message actions and confirm run deletion.
+- Detect a held gamepad when starting a run after touch or keyboard menu input.
+- Enable controller features only on their first connection and preserve manually chosen or
+  previously saved settings across reconnections and reloads.
+
+Physics version: 1; existing replays remain compatible. DualSense feedback and trigger tuning are unchanged.
+
 ## 1.1.0 — 2026-10-09
 
 - DualSense Bluetooth input, automatic connection and feedback settings, engine PCM haptics,
