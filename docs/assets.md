@@ -46,8 +46,12 @@ saved speaker volume controls; speaker levels do not affect DualSense engine PCM
 ## Engine recording
 
 `public/assets/audio/motorcycle.mp3` is the user-supplied
-`motorcycle-1000-cc-engine-start-idle.mp3`, copied without re-encoding. The original download
-source and licence have not been supplied. Runtime loop selection and playback are described
+`motorcycle-1000-cc-engine-start-idle.mp3`, copied without re-encoding. The recording was supplied
+from [Zvukogram, recording 27848](https://zvukogram.com/zvuk/27848/), in its
+[motorcycle sound catalogue](https://zvukogram.com/category/zvuki-mototsikla/).
+The supplier describes it as openly licensed. The catalogue does not identify a specific licence
+for this file; [Zvukogram's copyright page](https://zvukogram.com/node/dmca/) says the site does not
+issue licences or guarantee free use. Runtime loop selection and playback are described
 in [dualsense.md](dualsense.md).
 
 ## Brand
