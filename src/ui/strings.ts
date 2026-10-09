@@ -101,6 +101,9 @@ const EN = {
   myTracks: 'My tracks',
   watch: 'Watch',
   race: 'Race this run',
+  mediaReady: 'Ready. Tap Share to send the file.',
+  shareMedia: 'Share file',
+  downloadMedia: 'Download file',
   share: 'Share',
   copyLink: 'Copy link',
   copyShortLink: 'Copy short link',
@@ -163,6 +166,8 @@ const EN = {
   successfullyInstalled: 'Levels successfully installed.',
   damagedPack: 'Looks like these levels are damaged.',
   delete: 'Delete',
+  deleteReplay: 'Delete run',
+  deleteReplayConfirmation: 'Delete this run? This action cannot be undone.',
   deleteLevels: 'Delete levels',
   deleteLevelsConfirmation: 'Are you sure you want to delete these levels? This action cannot be undone.',
   originalLevels: 'Original levels',
@@ -177,7 +182,6 @@ const EN = {
   no: 'No',
   on: 'On',
   off: 'Off',
-  goToMain: 'Go to Main',
 
   start: 'Start',
   level: 'Level',
@@ -216,7 +220,7 @@ const EN = {
   screen: 'Screen',
   screens: ['Modern', 'Classic 240', 'Classic 176'] as readonly string[],
   vibrateOnTouch: 'Vibrate on touch',
-  keyboardInMenu: 'Touch controls in menus',
+  exitToMenu: 'Exit to menu',
   ghost: 'Ghost',
   music: 'Music',
   musicVolume: 'Music volume',
@@ -247,7 +251,7 @@ const EN = {
 1 accelerates, 4 brakes, 6 leans forward and 5 leans backward.<br><br>
 <b>Keyset 3</b><br>
 3 accelerates, 6 brakes, 5 leans forward and 4 leans backward.<br><br>
-The keysets apply to the digit keys and to the on-screen keypad, whose buttons stand for the digits 1 to 9.`,
+The keysets apply to the digit keys. The four touch buttons always control lean, throttle and brake.`,
   unlocking: 'Unlocking',
   unlockingText:
     'By completing the easier levels, new levels will be unlocked. You will also gain access to higher leagues where more advanced bikes with different characteristics are available.',
@@ -261,7 +265,6 @@ The keysets apply to the digit keys and to the on-screen keypad, whose buttons s
 <b>Look ahead: On/Off</b><br>Default: &lt;On&gt;<br>Turns on and off smart camera movement.<br><br>
 <b>Screen: Modern, Classic 240, Classic 176</b><br>Default: &lt;Modern&gt;<br>The classic screens show the game in the few pixels of the phones it was made for.<br><br>
 <b>Vibrate on touch: On/Off</b><br>Default: &lt;On&gt;<br>Enables haptic feedback when you press the on-screen keys.<br><br>
-<b>Keyboard in menu: On/Off</b><br>Default: &lt;On&gt;<br>Turns on and off the on-screen keyboard in menus.<br><br>
 <b>Ghost: On/Off</b><br>Default: &lt;On&gt;<br>Shows your fastest run on the track as a faint bike to race against, with the gap to it under the clock.<br><br>
 <b>Music: On/Off</b><br>Default: &lt;On&gt;<br>Turns the background music on and off.<br><br>
 <b>Sound: On/Off</b><br>Default: &lt;On&gt;<br>Turns the engine and the sound effects on and off.<br><br>

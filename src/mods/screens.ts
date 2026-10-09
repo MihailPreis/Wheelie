@@ -1,3 +1,4 @@
+import { trackEvent } from '../services/events';
 import type { MenuItem, MenuScreen } from '../ui/menu/view';
 import { STRINGS as S } from '../ui/strings';
 import {
@@ -77,7 +78,7 @@ export class ModsScreens {
         { kind: 'action', label: S.downloadMods, run: () => void this.openDownload() },
         { kind: 'action', label: S.installedMods, run: () => void this.openInstalled() },
         { kind: 'action', label: S.installMrg, run: () => this.pickFile() },
-        { kind: 'action', label: S.back, run: back },
+        { kind: 'action', navigation: 'back', label: S.back, run: back },
       ],
     };
   };
@@ -150,7 +151,7 @@ export class ModsScreens {
         },
       });
     }
-    items.push({ kind: 'action', label: S.back, run: back });
+    items.push({ kind: 'action', navigation: 'back', label: S.back, run: back });
     return { title: S.downloadMods, back, items };
   };
 
@@ -180,7 +181,7 @@ export class ModsScreens {
           run: () => void this.install(pack, self),
         });
       }
-      items.push({ kind: 'action', label: S.back, run: back });
+      items.push({ kind: 'action', navigation: 'back', label: S.back, run: back });
       return { title: S.downloadMods, back, items };
     };
     return self;
@@ -209,6 +210,7 @@ export class ModsScreens {
     }
     const pack: InstalledPack = { id, name, author, bytes, installed: Date.now() };
     await this.library.put(pack);
+    trackEvent('mod_install', { source: 'catalogue' });
     this.installed.set(id, pack);
     this.host.alert(S.mods, S.successfullyInstalled, then);
   }
@@ -237,7 +239,7 @@ export class ModsScreens {
         run: () => this.host.open(this.installedPackScreen(pack, this.installedScreen)),
       });
     }
-    items.push({ kind: 'action', label: S.back, run: back });
+    items.push({ kind: 'action', navigation: 'back', label: S.back, run: back });
     return { title: S.installedMods, back, items };
   };
 
@@ -258,7 +260,7 @@ export class ModsScreens {
       if (installed) {
         items.push({ kind: 'action', label: S.delete, run: () => this.host.open(this.deleteScreen(installed, self)) });
       }
-      items.push({ kind: 'action', label: S.back, run: back });
+      items.push({ kind: 'action', navigation: 'back', label: S.back, run: back });
       return { title: S.installedMods, back, items };
     };
     return self;
@@ -317,6 +319,7 @@ export class ModsScreens {
       const pack = buildPack(id, listed.name, listed.author, bytes);
       const record: InstalledPack = { id, name: listed.name, author: listed.author, bytes, installed: Date.now() };
       await this.library.put(record);
+      trackEvent('mod_install', { source: 'file' });
       this.installed.set(id, record);
       return pack;
     } catch {
@@ -372,7 +375,7 @@ export class ModsScreens {
         },
         { kind: 'space', size: 10 },
         { kind: 'action', label: S.install, run: () => void install() },
-        { kind: 'action', label: S.back, run: then },
+        { kind: 'action', navigation: 'back', label: S.back, run: then },
       ],
     }));
   }

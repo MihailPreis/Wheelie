@@ -11,6 +11,7 @@ import { analyseRun } from './achievements/analyse';
 import type { Music } from './audio/music';
 import { MUSIC_TRACKS } from './audio/playlist';
 import type { Sound } from './audio/sound';
+import { TICK_MILLISECONDS } from './core/sim';
 import { PHYSICS_VERSION } from './core/version';
 import {
   type Candidate,
@@ -30,6 +31,7 @@ import { EditorScreens } from './editor/screens';
 import { decodeReplay, encodeReplay, hashTrack, MAX_REPLAY_BYTES, Outcome, type Replay } from './formats/replay';
 import type { Game, RecordedRun, RunResult, Track } from './game/game';
 import { GamepadNavigator, isMenuAction } from './game/gamepad-nav';
+import { gamepads } from './game/gamepads';
 import {
   addScore,
   clearScores,
@@ -64,7 +66,14 @@ import {
   saveProgress,
   unlockEverything,
 } from './game/progress';
-import { loadSettings, normalizeName, type Settings, saveSettings } from './game/settings';
+import {
+  initialiseController,
+  loadSettings,
+  normalizeName,
+  rememberControllerOption,
+  type Settings,
+  saveSettings,
+} from './game/settings';
 import type { Library } from './mods/library';
 import { buildPack, ORIGINAL_PACK_ID, type Pack } from './mods/pack';
 import { ModsScreens, type ScreenBuilder } from './mods/screens';
@@ -75,6 +84,7 @@ import { ReplayScreens } from './replay/screens';
 import { decodeFragment, decodeTrackFragment, isReplayFragment } from './replay/share';
 import { verifyReplay } from './replay/simulate';
 import type { ReplayStore, StoredReplay } from './replay/store';
+import { trackEvent } from './services/events';
 import { readJson, removeAll, writeJson } from './storage/store';
 import type { Keypad } from './ui/keypad';
 import type { MenuItem, MenuKey, MenuView } from './ui/menu/view';
@@ -122,12 +132,6 @@ const MENU_KEYS: Readonly<Record<string, MenuKey>> = {
   Space: 'fire',
   Escape: 'back',
   Backspace: 'back',
-};
-const KEYPAD_KEYS: Readonly<Record<Action, MenuKey>> = {
-  accelerate: 'up',
-  brake: 'down',
-  leanBack: 'left',
-  leanForward: 'right',
 };
 const TYPING_KEYS = new Set(['ArrowUp', 'ArrowDown', 'Enter', 'NumpadEnter', 'Escape']);
 const PAUSE_KEYS = new Set(['Escape', 'KeyP']);
@@ -230,7 +234,10 @@ export class App {
         watch: (replay, back) => void this.watch(replay, back),
         race: (replay, back) => void this.race(replay, back),
         importReplay: (bytes) => void this.importReplay(bytes),
-        shared: () => this.earn(['shared']),
+        shared: () => {
+          trackEvent('share', { content_type: 'run' });
+          this.earn(['shared']);
+        },
         selected: () => ({
           packId: this.pack.id,
           level: this.progress.selectedLevel,
@@ -295,12 +302,13 @@ export class App {
     );
 
     game.onFinish = (result) => this.finished(result);
+    game.onRestart = () => {
+      if (!this.testing) this.trackRunStart(this.ridingDaily ? 'daily' : 'regular');
+    };
     game.onRun = (run) => this.recordRun(run);
     input.onDeviceChange = () => this.updateKeypad();
-    keypad.onPress = (action) => {
-      const key = KEYPAD_KEYS[action];
-      if (key && this.menu.visible) this.menuKey(key);
-    };
+    window.addEventListener('gamepadconnected', () => this.enableGamepad());
+    if (gamepads().some((pad) => pad.connected)) this.enableGamepad();
     menuButton.addEventListener('click', () => this.pause());
     requestAnimationFrame(this.pollGamepad);
   }
@@ -332,15 +340,15 @@ export class App {
     this.applySettings();
   }
 
-  /** Enable the controller's complete feature set on connection; manual changes still work. */
+  private enableGamepad(): void {
+    if (initialiseController(this.settings)) this.saveSettings();
+  }
+
+  /** The first connection enables features; later connections retain the player's choices. */
   private enableDualSense(): void {
-    this.settings.analogTriggers = true;
-    this.settings.engineHaptics = true;
-    this.settings.vibrate = true;
-    if (this.settings.triggerResistance === 0) this.settings.triggerResistance = 2;
+    if (initialiseController(this.settings, true)) this.saveSettings();
     this.input.release();
     this.input.gamepadConnected();
-    this.saveSettings();
   }
 
   /** Switches to another level pack, with its own progress and scores, and shows its tracks. */
@@ -371,11 +379,10 @@ export class App {
     saveProgress(this.pack.id, this.progress);
   }
 
-  /** The keypad shows on touch devices: always while riding, and in the menus if the option says so. */
+  /** Riding controls stay hidden throughout menus, including pause submenus. */
   private updateKeypad(): void {
     const touch = this.input.device === 'touch';
-    this.keypad.visible =
-      touch && !this.watching && !this.editor.visible && (this.playing || this.settings.keypadInMenu);
+    this.keypad.visible = touch && this.playing && !this.menu.visible && !this.watching && !this.editor.visible;
     this.menuButton.hidden = !this.playing || this.menu.visible || this.watching;
     this.onLayout();
   }
@@ -608,6 +615,7 @@ export class App {
     this.level = level;
     this.track = track;
     this.runPack = this.pack;
+    this.trackRunStart('regular');
     this.ridingDaily = false;
     this.playing = true;
     this.game.paused = false;
@@ -625,15 +633,32 @@ export class App {
     }
     if (this.ridingDaily && this.playing && !this.menu.visible && this.game.riding) {
       this.game.paused = true;
+      trackEvent('game_pause', {});
       this.showMenu(this.dailyPauseMenu);
       return;
     }
     if (!this.playing || this.menu.visible || !this.game.riding) return;
     this.game.paused = true;
+    trackEvent('game_pause', {});
     this.showMenu(this.ingameMenu);
   }
 
+  private trackRunStart(mode: 'regular' | 'daily'): void {
+    trackEvent('run_start', {
+      mode,
+      league: this.game.league,
+      input_device: this.input.device,
+      pack_type:
+        this.runPack.id === ORIGINAL_PACK_ID
+          ? 'original'
+          : this.runPack.id.startsWith('file-')
+            ? 'custom'
+            : 'catalogue',
+    });
+  }
+
   private resume(): void {
+    trackEvent('game_resume', {});
     this.menu.hide();
     this.current = null;
     this.game.paused = false;
@@ -645,6 +670,13 @@ export class App {
   /** Keeps a run as a replay, once riding it again has been seen to end the same way. */
   private recordRun(run: RecordedRun): void {
     if (this.testing) return;
+    trackEvent('run_end', {
+      outcome:
+        run.outcome === Outcome.Finished ? 'finished' : run.outcome === Outcome.Crashed ? 'crashed' : 'abandoned',
+      duration_ms: run.inputs.length * TICK_MILLISECONDS,
+      race_time_ms: run.time,
+      mode: this.ridingDaily ? 'daily' : 'regular',
+    });
     const track = this.runPack.levels[this.level]?.[this.track];
     // Achievements are judged on the original tracks and the daily one: anywhere else a track
     // could be made to order for them.
@@ -711,6 +743,7 @@ export class App {
   /** Awards achievements and announces the ones that are new. */
   private earn(ids: readonly AchievementId[]): void {
     for (const id of award(ids, Date.now())) {
+      trackEvent('unlock_achievement', { achievement_id: id });
       this.fresh.push(id);
       this.toasts.show(S.achievementEarned(S.achievementList[id][0]));
     }
@@ -745,7 +778,7 @@ export class App {
         html: `<b>${escapeHtml(title)}</b><br>${escapeHtml(text)}<br><span class="menu-dim">${escapeHtml(date)}</span>`,
       });
     }
-    items.push({ kind: 'action', label: S.back, run: back });
+    items.push({ kind: 'action', navigation: 'back', label: S.back, run: back });
     return { title: S.achievements, back, text: true, items };
   };
 
@@ -788,14 +821,15 @@ export class App {
         run: () => void this.openDaily(day),
       });
     }
-    items.push({ kind: 'action', label: S.back, run: back });
+    items.push({ kind: 'action', navigation: 'back', label: S.back, run: back });
     return { title: S.dailyPast, back, items };
   };
 
   private readonly dailyScreen: ScreenBuilder = () => {
     const daily = this.daily;
     const back = () => (daily && !daily.today ? this.open(this.dailyArchive) : this.open(this.mainMenu));
-    if (!daily) return { title: S.daily, back, items: [{ kind: 'action', label: S.back, run: back }] };
+    if (!daily)
+      return { title: S.daily, back, items: [{ kind: 'action', navigation: 'back', label: S.back, run: back }] };
     const best = daily.today ? dailyBest(daily.day) : dailyBestEver(daily.day);
     const streak = dailyStreak(dayOf(Date.now()));
     const dim = (label: string, value: string): MenuItem => ({
@@ -818,7 +852,7 @@ export class App {
         { kind: 'space', size: 10 },
         { kind: 'action', label: `${S.start}>`, run: () => void this.playDaily() },
         ...(daily.today ? [this.link(S.dailyPast, this.dailyArchive)] : []),
-        { kind: 'action', label: S.back, run: back },
+        { kind: 'action', navigation: 'back', label: S.back, run: back },
       ],
     };
   };
@@ -845,6 +879,7 @@ export class App {
     this.level = daily.level;
     this.track = daily.track;
     this.runPack = daily.pack;
+    this.trackRunStart('daily');
     this.ridingDaily = true;
     this.playing = true;
     this.game.paused = false;
@@ -857,12 +892,13 @@ export class App {
 
   private readonly dailyPauseMenu: ScreenBuilder = () => ({
     title: S.ingame,
-    back: () => (this.game.crashed ? void this.playDaily() : this.resume()),
+    back: () => this.showFrontMenu(this.dailyScreen),
+    backLabel: S.exitToMenu,
     items: [
       ...(!this.game.crashed ? [{ kind: 'action' as const, label: S.continue, run: () => this.resume() }] : []),
       { kind: 'action', label: S.restart, run: () => void this.playDaily() },
       this.link(S.options, this.optionsMenu(this.dailyPauseMenu)),
-      { kind: 'action', label: S.daily, run: () => this.showFrontMenu(this.dailyScreen) },
+      this.link(S.help, this.helpMenu(this.dailyPauseMenu)),
     ],
   });
 
@@ -878,6 +914,7 @@ export class App {
     const screen: ScreenBuilder = () => ({
       title: S.finished,
       back: () => this.showFrontMenu(this.dailyScreen),
+      backLabel: S.exitToMenu,
       items: [
         { kind: 'text', html: formatScoreTime(Math.floor(result.time / 10)), big: true },
         {
@@ -910,7 +947,6 @@ export class App {
               if (run) this.replays.share(run, screen);
             }),
         },
-        { kind: 'action', label: S.daily, run: () => this.showFrontMenu(this.dailyScreen) },
       ],
     });
     this.showMenu(screen);
@@ -925,6 +961,7 @@ export class App {
       this.editor.show(S.editorTestFailed);
       return;
     }
+    trackEvent('editor_test', { league: this.game.league });
     this.editor.hide();
     this.testing = true;
     this.playing = true;
@@ -1009,6 +1046,10 @@ export class App {
             void this.race(stored, back);
           }
         : null;
+    trackEvent('replay_open', {
+      embedded: window.top !== window,
+      duration_ms: replay.inputs.length * TICK_MILLISECONDS,
+    });
     this.watching = true;
     this.afterWatching = back;
     this.playing = false;
@@ -1268,7 +1309,7 @@ export class App {
               if (!taken) this.alert(S.editor, S.editorCannotCopy, back);
             }),
         },
-        { kind: 'action', label: S.back, run: back },
+        { kind: 'action', navigation: 'back', label: S.back, run: back },
       ],
     }));
   }
@@ -1355,34 +1396,44 @@ export class App {
     }
 
     // A time that makes the table: announce it and offer to change the name first.
+    const acceptRecord = () => {
+      addScore(scores, league, this.settings.name, time);
+      saveScores(this.pack.id, this.level, this.track, scores);
+      this.completed(scores, time);
+    };
     const record: ScreenBuilder = () => ({
       title: S.finished,
-      back: null,
+      back: () => {
+        acceptRecord();
+        this.showFrontMenu(this.playMenu);
+      },
+      backLabel: S.exitToMenu,
       items: [
         { kind: 'text', html: S.places[place] ?? '', big: true, medal: place },
         { kind: 'text', html: formatScoreTime(time) },
         {
           kind: 'action',
           label: S.ok,
-          run: () => {
-            addScore(scores, league, this.settings.name, time);
-            saveScores(this.pack.id, this.level, this.track, scores);
-            this.completed(scores, time);
-          },
+          run: acceptRecord,
         },
         {
           kind: 'action',
           label: `${S.name} - ${this.settings.name}`,
           run: () =>
-            this.menu.showNameInput(S.enterName, this.settings.name, (name) => {
-              this.settings.name = normalizeName(name);
-              this.saveSettings();
-              if (isCheatName(this.settings.name)) {
-                unlockEverything(this.progress, this.trackCounts);
-                this.saveProgress();
-              }
-              this.open(record);
-            }),
+            this.menu.showNameInput(
+              S.enterName,
+              this.settings.name,
+              (name) => {
+                this.settings.name = normalizeName(name);
+                this.saveSettings();
+                if (isCheatName(this.settings.name)) {
+                  unlockEverything(this.progress, this.trackCounts);
+                  this.saveProgress();
+                }
+                this.open(record);
+              },
+              () => this.open(record),
+            ),
         },
       ],
     });
@@ -1450,7 +1501,12 @@ export class App {
       label: `${S.restart}: ${this.trackName(level, track)}`,
       run: () => this.play(level, track),
     });
-    const screen: ScreenBuilder = () => ({ title: S.finished, back: () => this.showFrontMenu(this.playMenu), items });
+    const screen: ScreenBuilder = () => ({
+      title: S.finished,
+      back: () => this.showFrontMenu(this.playMenu),
+      backLabel: S.exitToMenu,
+      items,
+    });
     items.push({
       kind: 'action',
       label: S.watchReplay,
@@ -1459,7 +1515,6 @@ export class App {
           if (run) void this.watch(run, screen);
         }),
     });
-    items.push({ kind: 'action', label: S.playMenu, run: () => this.showFrontMenu(this.playMenu) });
 
     this.showMenu(screen);
     if (unlocked !== null) {
@@ -1476,7 +1531,6 @@ export class App {
       items: [
         { kind: 'text', html: text },
         { kind: 'space', size: 10 },
-        { kind: 'action', label: S.ok, run: then },
       ],
     }));
   }
@@ -1586,7 +1640,6 @@ export class App {
             })(),
         },
         this.link(S.highscores, this.highscoresScreen(p.selectedLeague)),
-        { kind: 'action', label: S.goToMain, run: () => this.open(this.mainMenu) },
       ],
     };
   };
@@ -1615,14 +1668,15 @@ export class App {
           medal: place,
         });
       });
-      items.push({ kind: 'space', size: 10 }, { kind: 'action', label: S.back, run: back });
+      items.push({ kind: 'space', size: 10 }, { kind: 'action', navigation: 'back', label: S.back, run: back });
       return { title: S.highscores, back, items };
     };
   }
 
   private readonly ingameMenu: ScreenBuilder = () => ({
     title: S.ingame,
-    back: () => (this.game.crashed ? this.play(this.level, this.track) : this.resume()),
+    back: () => this.showFrontMenu(this.playMenu),
+    backLabel: S.exitToMenu,
     items: [
       ...(!this.game.crashed ? [{ kind: 'action' as const, label: S.continue, run: () => this.resume() }] : []),
       {
@@ -1632,7 +1686,6 @@ export class App {
       },
       this.link(S.options, this.optionsMenu(this.ingameMenu)),
       this.link(S.help, this.helpMenu(this.ingameMenu)),
-      { kind: 'action', label: S.playMenu, run: () => this.showFrontMenu(this.playMenu) },
     ],
   });
 
@@ -1648,7 +1701,6 @@ export class App {
           | 'bikeSprite'
           | 'lookAhead'
           | 'vibrate'
-          | 'keypadInMenu'
           | 'music'
           | 'sound'
           | 'ghost',
@@ -1660,6 +1712,7 @@ export class App {
         toggle: true,
         change: (value) => {
           s[key] = value === 0;
+          if (key === 'vibrate') rememberControllerOption(s, key);
           this.saveSettings();
           this.refresh();
         },
@@ -1698,7 +1751,6 @@ export class App {
             },
           },
           toggle(S.vibrateOnTouch, 'vibrate'),
-          toggle(S.keyboardInMenu, 'keypadInMenu'),
           toggle(S.ghost, 'ghost'),
           {
             kind: 'option',
@@ -1759,7 +1811,7 @@ export class App {
             },
           },
           this.link(S.clearHighscore, this.eraseScreen(self)),
-          { kind: 'action', label: S.back, run: back },
+          { kind: 'action', navigation: 'back', label: S.back, run: back },
         ],
       };
     };
@@ -1836,7 +1888,7 @@ export class App {
             this.open(self);
           },
         },
-        { kind: 'action', label: S.back, run: back },
+        { kind: 'action', navigation: 'back', label: S.back, run: back },
       );
       return { title: S.controls, back, items };
     };
@@ -1856,6 +1908,7 @@ export class App {
         toggle: true,
         change: (value) => {
           this.settings[key] = value === 0;
+          rememberControllerOption(this.settings, key);
           this.input.release();
           this.saveSettings();
           this.refresh();
@@ -1906,11 +1959,12 @@ export class App {
             value: this.settings.triggerResistance,
             change: (value) => {
               this.settings.triggerResistance = value;
+              rememberControllerOption(this.settings, 'triggerResistance');
               this.saveSettings();
               this.refresh();
             },
           },
-          { kind: 'action', label: S.back, run: back },
+          { kind: 'action', navigation: 'back', label: S.back, run: back },
         ],
       };
     };
@@ -1999,7 +2053,7 @@ export class App {
           page(S.unlocking, S.unlockingText),
           page(S.highscores, S.highscoreText),
           page(S.options, S.optionsText),
-          { kind: 'action', label: S.back, run: () => this.open(parent) },
+          { kind: 'action', navigation: 'back', label: S.back, run: () => this.open(parent) },
         ],
       };
     };
@@ -2015,7 +2069,7 @@ export class App {
         text: true,
         items: [
           { kind: 'text', html },
-          { kind: 'action', label: S.back, run: back },
+          { kind: 'action', navigation: 'back', label: S.back, run: back },
         ],
       };
     };

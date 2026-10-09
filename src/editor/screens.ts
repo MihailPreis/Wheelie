@@ -148,7 +148,7 @@ export class EditorScreens {
         { kind: 'action', label: S.editorSave, run: () => this.download() },
       );
     }
-    items.push({ kind: 'action', label: S.back, run: back });
+    items.push({ kind: 'action', navigation: 'back', label: S.back, run: back });
     return { title: S.editor, back, items };
   };
 
@@ -207,7 +207,7 @@ export class EditorScreens {
                 ],
               })),
           },
-          { kind: 'action', label: S.back, run: back },
+          { kind: 'action', navigation: 'back', label: S.back, run: back },
         ],
       };
     };

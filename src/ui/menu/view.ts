@@ -8,7 +8,7 @@ import { STRINGS as S } from '../strings';
  */
 
 export type MenuItem =
-  | { kind: 'action'; label: string; run: () => void }
+  | { kind: 'action'; label: string; run: () => void; navigation?: 'back' }
   | {
       kind: 'option';
       label: string;
@@ -36,6 +36,8 @@ export interface MenuScreen {
   items: MenuItem[];
   /** Where "back" leads; `null` if the screen cannot be left that way. */
   back: (() => void) | null;
+  /** Footer and back-key label; ordinary submenus use Back, riding screens use Exit to menu. */
+  backLabel?: string;
   /** A screen of reading matter: up and down scroll instead of moving the highlight. */
   text?: boolean;
   /** Item index to select on opening; otherwise the first interactive item. */
@@ -62,7 +64,8 @@ export class MenuView {
   private screen: MenuScreen | null = null;
   private selected = -1;
   private rows: (HTMLElement | null)[] = [];
-  private nameInput: { chars: string[]; cursor: number; done: (name: string) => void } | null = null;
+  private nameInput: { chars: string[]; cursor: number; done: (name: string) => void; cancel: () => void } | null =
+    null;
 
   constructor(private readonly spriteUrl: (name: string) => string) {
     this.element.hidden = true;
@@ -101,12 +104,12 @@ export class MenuView {
         : undefined;
     // One consistent footer, including option lists and confirmation screens.
     if (screen.back) {
-      const footer = screen.items.find((item) => item.kind === 'action' && item.label === S.back);
+      const label = screen.backLabel ?? S.back;
       screen = {
         ...screen,
         items: [
-          ...screen.items.filter((item) => item.kind !== 'action' || item.label !== S.back),
-          footer ?? { kind: 'action', label: S.back, run: screen.back },
+          ...screen.items.filter((item) => item.kind !== 'action' || item.navigation !== 'back'),
+          { kind: 'action', navigation: 'back', label, run: screen.back },
         ],
       };
     }
@@ -145,7 +148,7 @@ export class MenuView {
     }
 
     const row = el('div', 'menu-item');
-    row.classList.toggle('menu-back', item.kind === 'action' && item.label === S.back);
+    row.classList.toggle('menu-back', item.kind === 'action' && item.navigation === 'back');
     const helmet = el('span', 'menu-helmet');
     helmet.append(this.sprite('s_helmet', 'menu-helmet-image'));
     row.append(helmet);
@@ -296,9 +299,9 @@ export class MenuView {
   // ---- name entry -------------------------------------------------------------------------
 
   /** Asks for the three-letter name of the high score tables (`NameInputMenuScreen`). */
-  showNameInput(title: string, name: string, done: (name: string) => void): void {
+  showNameInput(title: string, name: string, done: (name: string) => void, cancel: () => void): void {
     this.screen = null;
-    this.nameInput = { chars: [...name.padEnd(3, ' ').slice(0, 3)], cursor: 0, done };
+    this.nameInput = { chars: [...name.padEnd(3, ' ').slice(0, 3)], cursor: 0, done, cancel };
     this.element.hidden = false;
     this.element.classList.remove('menu-text-screen');
     this.title.textContent = title;
@@ -356,9 +359,9 @@ export class MenuView {
       state.cursor = (state.cursor + (key === 'right' ? 1 : 2)) % 3;
       this.renderName();
     } else {
-      // Selecting and going back both accept what has been entered.
       this.nameInput = null;
-      state.done(state.chars.join(''));
+      if (key === 'back') state.cancel();
+      else state.done(state.chars.join(''));
     }
   }
 

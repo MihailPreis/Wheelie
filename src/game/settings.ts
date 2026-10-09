@@ -1,19 +1,20 @@
 import { readJson, writeJson } from '../storage/store';
 
+const CONTROLLER_OPTIONS = ['analogTriggers', 'vibrate', 'engineHaptics', 'triggerResistance'] as const;
+export type ControllerOption = (typeof CONTROLLER_OPTIONS)[number];
+
 /** The options of the original game, plus the ones the web version adds. */
 export interface Settings {
   perspective: boolean;
   shadows: boolean;
   driverSprite: boolean;
   bikeSprite: boolean;
-  /** 0–2: which keyset the digit keys and the on-screen keypad use. */
+  /** 0–2: which keyset the digit keys use. */
   keyset: number;
   lookAhead: boolean;
   /** 0 the display's resolution, 1 and 2 the classic 240 and 176 pixel screens. */
   screen: number;
   vibrate: boolean;
-  /** Keep the on-screen keypad visible in the menus. */
-  keypadInMenu: boolean;
   /** Race against the fastest run of one's own on the track. */
   ghost: boolean;
   music: boolean;
@@ -27,6 +28,8 @@ export interface Settings {
   engineHaptics: boolean;
   /** 0 off, 1 light, 2 medium, 3 firm. */
   triggerResistance: number;
+  /** Options already initialised by a controller or deliberately set by the player. */
+  configuredControllerOptions: ControllerOption[];
   /** Three characters, A–Z or space, entered for the high score tables. */
   name: string;
 }
@@ -42,7 +45,6 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   lookAhead: true,
   screen: 0,
   vibrate: true,
-  keypadInMenu: true,
   ghost: true,
   music: false,
   sound: true,
@@ -52,6 +54,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   analogTriggers: false,
   engineHaptics: true,
   triggerResistance: 1,
+  configuredControllerOptions: [],
   name: DEFAULT_NAME,
 };
 
@@ -74,7 +77,6 @@ export function loadSettings(): Settings {
     'bikeSprite',
     'lookAhead',
     'vibrate',
-    'keypadInMenu',
     'ghost',
     'music',
     'sound',
@@ -99,7 +101,32 @@ export function loadSettings(): Settings {
     if (typeof value === 'number' && Number.isFinite(value))
       settings[key] = Math.round(Math.max(0, Math.min(100, value)) / 10) * 10;
   }
+  settings.configuredControllerOptions = CONTROLLER_OPTIONS.filter((key) =>
+    Array.isArray(stored.configuredControllerOptions)
+      ? stored.configuredControllerOptions.includes(key)
+      : key === 'triggerResistance'
+        ? Number.isInteger(stored[key]) && (stored[key] as number) >= 0 && (stored[key] as number) <= 3
+        : typeof stored[key] === 'boolean',
+  );
   return settings;
+}
+
+export function rememberControllerOption(settings: Settings, key: ControllerOption): void {
+  if (!settings.configuredControllerOptions.includes(key)) settings.configuredControllerOptions.push(key);
+}
+
+/** Enable each supported feature once, preserving saved and manually chosen values. */
+export function initialiseController(settings: Settings, dualSense = false): boolean {
+  const keys: readonly ControllerOption[] = dualSense ? CONTROLLER_OPTIONS : ['analogTriggers', 'vibrate'];
+  let changed = false;
+  for (const key of keys) {
+    if (settings.configuredControllerOptions.includes(key)) continue;
+    if (key === 'triggerResistance') settings[key] ||= 2;
+    else settings[key] = true;
+    rememberControllerOption(settings, key);
+    changed = true;
+  }
+  return changed;
 }
 
 export function saveSettings(settings: Settings): void {

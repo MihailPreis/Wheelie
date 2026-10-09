@@ -3,9 +3,10 @@
 Open Options → Controls → DualSense in Chrome or Edge on HTTPS (localhost also works).
 Connect the controller over Bluetooth, choose **Connect DualSense**, and grant WebHID access once.
 Previously authorised controllers reconnect automatically on page load and device reconnection.
-On connection, smooth triggers and engine haptics are enabled automatically, and trigger resistance
-is enabled if it was off. Its existing nonzero strength is preserved. Options can still be adjusted
-manually until the next connection. Speaker volume does not change engine haptics.
+On the first gamepad connection, smooth triggers and vibration are enabled. The first DualSense
+connection also enables engine haptics and trigger resistance, preserving its nonzero strength.
+Each feature is initialised only once; manually chosen options and settings saved by earlier
+versions are preserved across reconnections and page reloads. Speaker volume does not change engine haptics.
 Standard controls use the Gamepad API and do not need WebHID permission. A first button press
 may be needed before the browser exposes a gamepad. The page cannot pair a controller with the OS.
 
