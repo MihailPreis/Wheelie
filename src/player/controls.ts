@@ -8,7 +8,6 @@ import { STRINGS as S } from '../ui/strings';
 import './controls.css';
 
 export const SPEEDS = [0.25, 0.5, 1, 2, 4] as const;
-const clock = (ticks: number) => formatTime(Math.floor((ticks * TICK_MILLISECONDS) / 10));
 const ticksFor = (seconds: number) => Math.round((seconds * 1000) / TICK_MILLISECONDS);
 /** Milliseconds without input after which the bar gets out of the way of the picture. */
 const HIDE_AFTER = 2500;
@@ -68,6 +67,8 @@ export class PlayerControls {
 
   constructor(private readonly game: Game) {
     this.element.hidden = true;
+    this.element.addEventListener('pointerdown', () => this.wake());
+    this.element.addEventListener('focusin', () => this.wake());
     this.timeline.append(this.played, this.marks);
     for (const indexes of [
       [1, 2],
@@ -271,7 +272,7 @@ export class PlayerControls {
     const { game } = this;
     const length = Math.max(1, game.length);
     this.played.style.width = `${(game.position / length) * 100}%`;
-    this.clock.textContent = `${clock(game.position)} / ${clock(game.length)}`;
+    this.clock.textContent = formatTime(Math.floor(game.raceTime / 10));
     this.toggleButton.textContent = game.paused ? S.playerPlay : S.playerPause;
     this.speedButton.textContent = `${game.speed}x`;
     if (!this.keys.hidden) {
@@ -285,7 +286,13 @@ export class PlayerControls {
     }
     this.timeline.setAttribute('aria-valuenow', String(Math.round((game.position / length) * 100)));
     // While it plays untouched the bar fades; paused, it stays.
-    this.element.classList.toggle('player-idle', !game.paused && !this.dragging && now - this.lastInput > HIDE_AFTER);
+    this.element.classList.toggle(
+      'player-idle',
+      !game.paused &&
+        !this.dragging &&
+        !this.element.contains(document.activeElement) &&
+        now - this.lastInput > HIDE_AFTER,
+    );
     this.frame = requestAnimationFrame(this.update);
   };
 }

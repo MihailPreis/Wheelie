@@ -1,4 +1,5 @@
 import { createPose, Sim, Status } from '../core/sim';
+import { outsideTrack } from '../core/track-surface';
 import type { TrackData } from '../formats/mrg';
 import { inputLean, inputThrottle } from '../formats/replay';
 
@@ -47,12 +48,13 @@ export function analyseRun(track: TrackData, league: number, inputs: Uint8Array)
     const throttle = inputThrottle(code);
     const lean = inputLean(code);
     const status = sim.step(throttle, lean);
+    sim.capture(pose);
     if (status === Status.Finished || status === Status.FinishedLate) {
       facts.finished = true;
       facts.finishedAt = sim.ticks;
       break;
     }
-    if (status === Status.Broken || status === Status.Crashed) {
+    if (outsideTrack(sim.terrain, pose) || status === Status.Broken || status === Status.Crashed) {
       facts.crashedAt ??= sim.ticks;
       continue;
     }
@@ -62,7 +64,6 @@ export function analyseRun(track: TrackData, league: number, inputs: Uint8Array)
     if (lean !== 0) facts.leaned = true;
 
     // The frame's direction, followed tick by tick so that it can pass a full turn.
-    sim.capture(pose);
     const now = Math.atan2(
       (pose.y[3] as number) - (pose.y[4] as number),
       (pose.x[3] as number) - (pose.x[4] as number),

@@ -260,6 +260,12 @@ export class Input {
     this.keys.clear();
     this.touchDigits.clear();
     this.touchActions.clear();
+    this.beginRun();
+  }
+
+  /** Detect a held controller afresh after a menu used another input device. */
+  beginRun(): void {
+    this.padActive = false;
     this.throttleRemainder = 0;
     this.throttleDirection = 0;
     this.throttlePressure = 0;

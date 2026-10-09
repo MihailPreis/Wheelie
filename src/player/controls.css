@@ -149,3 +149,10 @@ a.player-button {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+/* A finger needs a CSS-pixel target even when the game renders at a smaller dp scale. */
+@media (pointer: coarse), (max-width: 600px) {
+  .player-timeline {
+    min-height: 44px;
+  }
+}

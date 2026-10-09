@@ -1,7 +1,24 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defaultBindings, Input, parseBindings, rebind } from './input';
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe('Input', () => {
+  it.each(['release', 'beginRun'] as const)('detects a held gamepad after a touch menu on %s', (reset) => {
+    const buttons = Array.from({ length: 17 }, () => ({ pressed: false, value: 0 }));
+    buttons[7] = { pressed: true, value: 1 };
+    vi.stubGlobal('navigator', {
+      getGamepads: () => [{ connected: true, id: 'test', buttons, axes: [0, 0] }],
+    });
+    const input = new Input();
+    input.read();
+    expect(input.device).toBe('gamepad');
+    input.touchAction(1, null);
+    expect(input.device).toBe('touch');
+    input[reset]();
+    expect(input.read()).toEqual({ throttle: 1, lean: 0 });
+    expect(input.device).toBe('gamepad');
+  });
   it('combines dedicated touch buttons independently of the digit keyset', () => {
     const input = new Input();
     for (const keyset of [0, 1, 2]) {

@@ -1,4 +1,5 @@
 import { createPose, type Pose, Sim, type SimSnapshot, Status, TICK_MILLISECONDS } from '../core/sim';
+import { outsideTrack } from '../core/track-surface';
 import type { TrackData } from '../formats/mrg';
 import { inputCode, inputLean, inputThrottle, Outcome } from '../formats/replay';
 import { Animator } from '../render/animator';
@@ -131,6 +132,7 @@ export class Game {
   onFinish: ((result: RunResult) => void) | null = null;
   audio: GameAudio | null = null;
   /** Called once for every run of the player's, however it ended. */
+  onRestart: (() => void) | null = null;
   onRun: ((run: RecordedRun) => void) | null = null;
   /** Playback speed of a replay; 1 is real time. */
   speed = 1;
@@ -153,7 +155,7 @@ export class Game {
   private result: RunResult | null = null;
   private throttle = false;
   private recorded: number[] = [];
-  private playback: (Playback & { snapshots: SimSnapshot[] }) | null = null;
+  private playback: (Playback & { snapshots: SimSnapshot[]; finishTick: number | null }) | null = null;
   /** Inputs of the recorded run the player is racing, if any. */
   private ghostInputs: Uint8Array | null = null;
   private ghost: {
@@ -253,7 +255,7 @@ export class Game {
     this.track = track;
     this.currentLeague = league;
     this.demo = false;
-    this.playback = { ...playback, snapshots: [sim.save()] };
+    this.playback = { ...playback, snapshots: [sim.save()], finishTick: null };
     this.speed = 1;
     this.begin(true);
   }
@@ -266,6 +268,14 @@ export class Game {
   /** Length of the replay being watched, in ticks. */
   get length(): number {
     return this.playback?.inputs.length ?? 0;
+  }
+
+  /** Race clock, excluding the approach to the start and the recorded roll after the finish. */
+  get raceTime(): number {
+    if (this.result) return this.result.time;
+    const playback = this.playback;
+    if (playback?.finishTick != null && this.position >= playback.finishTick) return playback.finishTime;
+    return this.sim?.raceTime ?? 0;
   }
 
   /** Input code of the tick last shown of the replay being watched, or null. */
@@ -304,6 +314,7 @@ export class Game {
     const code = playback.inputs[sim.ticks] ?? inputCode(0, 0);
     const before = sim.status;
     const status = sim.step(inputThrottle(code), inputLean(code));
+    if (isFinished(status)) playback.finishTick ??= sim.ticks;
     this.throttle = inputThrottle(code) > 0;
     if (sim.ticks % SNAPSHOT_EVERY === 0) playback.snapshots[sim.ticks / SNAPSHOT_EVERY] ??= sim.save();
     copyPose(this.current, this.previous);
@@ -313,7 +324,8 @@ export class Game {
     const viewport = this.viewport;
     this.animator.step(this.current, sim.terrain, this.lookAhead, Math.min(viewport.width, viewport.height));
     if (!live) return;
-    if (isDown(status) && !isDown(before)) {
+    const fellOff = !isFinished(status) && outsideTrack(sim.terrain, this.current);
+    if ((isDown(status) && !isDown(before)) || (fellOff && sim.ticks === playback.inputs.length)) {
       this.audio?.crash();
       this.showMessage(STRINGS.crashed, CRASH_RESTART_TICKS);
     } else if (isFinished(status) && !isFinished(before)) {
@@ -328,6 +340,7 @@ export class Game {
     this.endRun();
     this.sim = new Sim({ track: this.track.data, league: this.currentLeague, demo: this.demo });
     this.begin(!this.demo);
+    if (!this.demo) this.onRestart?.();
   }
 
   /** League of the track that is loaded. */
@@ -363,6 +376,7 @@ export class Game {
 
   private begin(showName: boolean): void {
     if (!this.sim || !this.track) return;
+    if (!this.demo && !this.playback) this.input.beginRun();
     this.phase = 'riding';
     this.phaseTicks = 0;
     this.brokenTicks = 0;
@@ -541,14 +555,17 @@ export class Game {
     const classic = this.classic > 0;
     const ratio = classic ? this.classicRatio : (window.devicePixelRatio || 1) * this.quality;
     // The few pixels of the classic screen are enlarged as they are, not smoothed.
-    canvas.style.imageRendering = classic ? 'pixelated' : '';
-    const width = Math.max(1, Math.round(canvas.clientWidth * ratio));
-    const height = Math.max(1, Math.round(canvas.clientHeight * ratio));
+    const rendering = classic ? 'pixelated' : '';
+    if (canvas.style.imageRendering !== rendering) canvas.style.imageRendering = rendering;
+    const cssWidth = canvas.clientWidth;
+    const cssHeight = canvas.clientHeight;
+    const width = Math.max(1, Math.round(cssWidth * ratio));
+    const height = Math.max(1, Math.round(cssHeight * ratio));
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width;
       canvas.height = height;
     }
-    return canvas.clientWidth > 0 ? width / canvas.clientWidth : ratio;
+    return cssWidth > 0 ? width / cssWidth : ratio;
   }
 
   /** Advances the game by one simulation tick. Public so tests can drive it without a clock. */
@@ -606,7 +623,12 @@ export class Game {
       return;
     }
 
-    if (status === Status.Broken && this.brokenTicks === 0) {
+    if (!isFinished(status) && outsideTrack(sim.terrain, this.current)) {
+      if (this.brokenTicks === 0) this.audio?.crash();
+      this.phase = 'crashed';
+      this.phaseTicks = HARD_CRASH_RESTART_TICKS;
+      this.showMessage(STRINGS.crashed, CRASH_RESTART_TICKS);
+    } else if (status === Status.Broken && this.brokenTicks === 0) {
       this.brokenTicks = CRASH_RESTART_TICKS;
       this.audio?.crash();
       this.showMessage(STRINGS.crashed, CRASH_RESTART_TICKS);
@@ -679,11 +701,7 @@ export class Game {
     if (!this.hud) return;
     drawHud(ctx, viewport, {
       progress: blended.progress / 65536,
-      time: this.result
-        ? this.result.time
-        : this.playback && isFinished(sim.status)
-          ? this.playback.finishTime
-          : sim.raceTime,
+      time: this.raceTime,
       message: this.message,
       gap: this.ghostGap(),
     });
