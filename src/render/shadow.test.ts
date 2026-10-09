@@ -18,3 +18,13 @@ describe('shadow surface', () => {
     expect(shadowDepth(0, 0, 0, 0)).toEqual([0, 0]);
   });
 });
+
+it('retains the preceding slope at shared vertices and supports long tracks', () => {
+  expect(shadowGround(terrain, 8)).toEqual({ y: 8, slope: 1 });
+  const points = new Int32Array(40000);
+  for (let i = 0; i < 20000; i++) {
+    points[i * 2] = i * 1024;
+    points[i * 2 + 1] = i * 512;
+  }
+  expect(shadowGround({ points, pointCount: 20000 } as Terrain, 2400)).toEqual({ y: 1200, slope: 0.5 });
+});

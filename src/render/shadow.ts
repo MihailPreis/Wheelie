@@ -4,12 +4,23 @@ const SCALE = 8 / 65536;
 
 /** A surface exists only between actual track endpoints; never extrapolate past them. */
 export function shadowGround(terrain: Terrain, x: number): { y: number; slope: number } | null {
-  for (let index = 0; index < terrain.pointCount - 1; index++) {
-    const left = (terrain.points[index * 2] as number) * SCALE;
-    const right = (terrain.points[index * 2 + 2] as number) * SCALE;
-    if (x < left || x > right || right <= left) continue;
-    const y = (terrain.points[index * 2 + 1] as number) * SCALE;
-    const slope = ((terrain.points[index * 2 + 3] as number) * SCALE - y) / (right - left);
+  // Lower bound keeps the original segment choice at an exact shared vertex.
+  const { points, pointCount } = terrain;
+  if (pointCount < 2 || x < (points[0] as number) * SCALE || x > (points[(pointCount - 1) * 2] as number) * SCALE)
+    return null;
+  let low = 1;
+  let high = pointCount - 1;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if ((points[middle * 2] as number) * SCALE < x) low = middle + 1;
+    else high = middle;
+  }
+  const index = low - 1;
+  const left = (points[index * 2] as number) * SCALE;
+  const right = (points[index * 2 + 2] as number) * SCALE;
+  if (right > left) {
+    const y = (points[index * 2 + 1] as number) * SCALE;
+    const slope = ((points[index * 2 + 3] as number) * SCALE - y) / (right - left);
     return { y: y + (x - left) * slope, slope };
   }
   return null;

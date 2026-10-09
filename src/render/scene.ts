@@ -1,10 +1,12 @@
 import { BodyIndex } from '../core/physics';
 import type { Pose } from '../core/sim';
 import { BODY_RADII, type Terrain } from '../core/terrain';
+import { outsideTrack } from '../core/track-surface';
 import type { Animator } from './animator';
 import { angleOf } from './geometry';
 import { shadowDepth, shadowGround } from './shadow';
 import type { Sprite, Sprites } from './sprites';
+import { type SurfacePoint, surfaceFace, surfaceIndex, visibleSurfaceLine } from './track-surface';
 
 /**
  * Draws the track and the bike. Ported from the drawing halves of `Game/GameView.java`,
@@ -269,9 +271,14 @@ export class SceneRenderer {
   private firstVisible(terrain: Terrain, visibleLeft: number): number {
     const points = terrain.points;
     const left = visibleLeft * ONE;
-    let index = 0;
-    while (index < terrain.pointCount - 1 && (points[index * 2] as number) <= left) index++;
-    return index > 0 ? index - 1 : 0;
+    let low = 0;
+    let high = terrain.pointCount - 1;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if ((points[middle * 2] as number) <= left) low = middle + 1;
+      else high = middle;
+    }
+    return low > 0 ? low - 1 : 0;
   }
 
   private drawFlag(kind: 'start' | 'finish', x: number, y: number, animator: Animator): void {
@@ -294,52 +301,63 @@ export class SceneRenderer {
     visibleLeft: number,
     visibleRight: number,
   ): void {
-    const points = terrain.points;
-    const count = terrain.pointCount;
-    const right = visibleRight * ONE;
-    // The far edge leans towards a point high above the bike.
-    const eyeX = (pose.x[BodyIndex.Frame] as number) / 2;
-    const eyeY = (pose.y[BodyIndex.Frame] as number) / 2 + 0x320000;
-    const depth = (index: number): [number, number] => {
-      const dx = eyeX - (points[index * 2] as number);
-      const dy = eyeY - (points[index * 2 + 1] as number);
-      const length = approxLength(dx, dy) / 4;
-      return length === 0 ? [0, 0] : [(dx / length) * ONE, (dy / length) * ONE];
+    const faces = [];
+    const indices: number[] = [];
+    const eyeX = (pose.x[BodyIndex.Frame] as number) * BODY_SCALE;
+    const eyeY = (pose.y[BodyIndex.Frame] as number) * BODY_SCALE + 400;
+    const near = (index: number): SurfacePoint => ({
+      x: (terrain.points[index * 2] as number) * TRACK_SCALE,
+      y: (terrain.points[index * 2 + 1] as number) * TRACK_SCALE,
+      depth: 0,
+    });
+    const far = (point: SurfacePoint): SurfacePoint => {
+      const [dx, dy] = shadowDepth(point.x, point.y, eyeX, eyeY);
+      return { x: point.x + dx, y: point.y + dy, depth: 1 };
     };
-
-    let index = this.firstVisible(terrain, visibleLeft);
-    let [nextDx, nextDy] = depth(index);
-    this.setColor(0, 170, 0);
-    while (index < count - 1) {
-      const dx = nextDx;
-      const dy = nextDy;
-      [nextDx, nextDy] = depth(index + 1);
-      const x = points[index * 2] as number;
-      const y = points[index * 2 + 1] as number;
-      const x2 = points[index * 2 + 2] as number;
-      const y2 = points[index * 2 + 3] as number;
-      this.trackLine(x + dx, y + dy, x2 + nextDx, y2 + nextDy);
-      this.trackLine(x, y, x + dx, y + dy);
-      if (terrain.startIndex === index) {
-        this.drawFlag('start', x + dx, y + dy, animator);
-        this.setColor(0, 170, 0);
-      }
-      if (terrain.finishIndex === index) {
-        this.drawFlag('finish', x + dx, y + dy, animator);
-        this.setColor(0, 170, 0);
-      }
-      if (x > right) break;
-      index++;
+    // Include neighbouring faces whose perspective projects into the viewport.
+    for (let index = this.firstVisible(terrain, visibleLeft - 4); index < terrain.pointCount - 1; index++) {
+      const a = near(index);
+      const b = near(index + 1);
+      faces.push(surfaceFace([a, b, far(b), far(a)]));
+      indices.push(index);
+      if (a.x > (visibleRight + 4) * 8) break;
     }
-    const lastX = points[(count - 1) * 2] as number;
-    const lastY = points[(count - 1) * 2 + 1] as number;
-    this.trackLine(lastX, lastY, lastX + nextDx, lastY + nextDy);
-
-    // Shadows are drawn after the track, using its surface as a clipping mask.
+    // The scene is already white; clipped lines provide opacity without repainting each face.
+    this.setColor(0, 170, 0);
+    const candidates = surfaceIndex(faces);
+    for (const [index, face] of faces.entries()) {
+      const [a, b, c, d] = face.points;
+      const lines = [
+        [d, c],
+        [a, d],
+      ];
+      if (index === faces.length - 1) lines.push([b, c]);
+      for (const [from, to] of lines) {
+        if (!from || !to) continue;
+        for (const [start, end] of visibleSurfaceLine(
+          from,
+          to,
+          faces,
+          index,
+          candidates(Math.min(from.x, to.x), Math.max(from.x, to.x)),
+        )) {
+          this.line(start.x, start.y, end.x, end.y);
+        }
+      }
+    }
+    for (const [index, face] of faces.entries()) {
+      const flag =
+        indices[index] === terrain.startIndex ? 'start' : indices[index] === terrain.finishIndex ? 'finish' : null;
+      if (flag) {
+        const point = face.points[3];
+        this.drawFlag(flag, point.x / TRACK_SCALE, point.y / TRACK_SCALE, animator);
+      }
+    }
   }
 
   /** A quiet, soft footprint on the finite track, with separate wheel contacts. */
   private drawGroundShadows(terrain: Terrain, pose: Pose, options: SceneOptions): void {
+    if (outsideTrack(terrain, pose)) return;
     const ctx = this.ctx;
     const xs = Array.from(pose.x, (x) => x * BODY_SCALE);
     const ys = Array.from(pose.y, (y) => y * BODY_SCALE);
@@ -356,12 +374,13 @@ export class SceneRenderer {
       const surface = new Path2D();
       const eyeX = xs[0] as number;
       const eyeY = (ys[0] as number) + 400;
-      for (let i = 0; i < terrain.pointCount - 1; i++) {
+      for (let i = this.firstVisible(terrain, (left - 40) / 8); i < terrain.pointCount - 1; i++) {
         const x = (terrain.points[i * 2] as number) * TRACK_SCALE;
         const y = (terrain.points[i * 2 + 1] as number) * TRACK_SCALE;
         const x2 = (terrain.points[i * 2 + 2] as number) * TRACK_SCALE;
         const y2 = (terrain.points[i * 2 + 3] as number) * TRACK_SCALE;
-        if (x2 < left - 40 || x > right + 40) continue;
+        if (x > right + 40) break;
+        if (x2 < left - 40) continue;
         const [dx, dy] = shadowDepth(x, y, eyeX, eyeY);
         const [dx2, dy2] = shadowDepth(x2, y2, eyeX, eyeY);
         surface.moveTo(this.screenX(x), this.screenY(y));
