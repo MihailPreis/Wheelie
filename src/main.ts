@@ -287,6 +287,14 @@ async function main(): Promise<void> {
   }
 
   layout();
+  if (import.meta.env.PROD) {
+    try {
+      const { initialiseAnalytics } = await import('./analytics/google');
+      initialiseAnalytics(import.meta.env.VITE_GA_MEASUREMENT_ID, true);
+    } catch {
+      // Optional tracking must not prevent startup when its module is blocked.
+    }
+  }
   app.start();
   game.start();
 

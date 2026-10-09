@@ -74,6 +74,7 @@ jobs:
           VITE_SHARE_BASE_URL: ${{ steps.share.outputs.url }}
           # Optional: the address of the short link service (worker/). Unset, the game offers no short links.
           VITE_SHORT_LINK_API: ${{ vars.SHORT_LINK_API }}
+          VITE_GA_MEASUREMENT_ID: ${{ vars.GA_MEASUREMENT_ID || 'auto' }}
         run: pnpm package:itch
 
       - name: Upload release archive
