@@ -10,6 +10,7 @@ import { LEAGUE_NAMES, LEVEL_NAMES } from '../game/progress';
 import { encodeProfile } from '../profile/profile';
 import type { SceneOptions } from '../render/scene';
 import type { Sprites } from '../render/sprites';
+import { trackEvent } from '../services/events';
 import type { MenuItem, MenuScreen } from '../ui/menu/view';
 import { STRINGS as S } from '../ui/strings';
 import { COMFORTABLE_LINK_LENGTH, encodeLink } from './share';
@@ -117,6 +118,7 @@ export class ReplayScreens {
   private filter = 0;
   private gifSize = 1;
   private gifPart = 0;
+  private media: { file: File; replayId: string } | null = null;
 
   constructor(
     private readonly host: ReplaysHost,
@@ -182,7 +184,7 @@ export class ReplayScreens {
     }
     if (this.replays.length > 0) items.push({ kind: 'action', label: S.saveAllRuns, run: () => this.saveAll() });
     items.push({ kind: 'action', label: S.openReplayFile, run: () => this.pickFile() });
-    items.push({ kind: 'action', label: S.back, run: back });
+    items.push({ kind: 'action', navigation: 'back', label: S.back, run: back });
     return { title: S.myRuns, back, items };
   };
 
@@ -212,13 +214,27 @@ export class ReplayScreens {
           {
             kind: 'action',
             label: S.delete,
-            run: () => {
-              void this.store.delete(replay.id);
-              this.replays = this.replays.filter((other) => other.id !== replay.id);
-              this.host.open(this.listScreen);
-            },
+            run: () =>
+              this.host.open(() => ({
+                title: S.deleteReplay,
+                back: () => this.host.open(self),
+                items: [
+                  { kind: 'text', html: S.deleteReplayConfirmation },
+                  { kind: 'action', label: S.no, run: () => this.host.open(self) },
+                  {
+                    kind: 'action',
+                    label: S.yes,
+                    run: () => {
+                      void this.store.delete(replay.id).then(() => {
+                        this.replays = this.replays.filter((other) => other.id !== replay.id);
+                        this.host.open(this.listScreen);
+                      });
+                    },
+                  },
+                ],
+              })),
           },
-          { kind: 'action', label: S.back, run: back },
+          { kind: 'action', navigation: 'back', label: S.back, run: back },
         ],
       };
     };
@@ -239,6 +255,7 @@ export class ReplayScreens {
         this.host.open(parent);
       };
       const say = (text: string) => this.host.open(this.shareScreen(replay, parent, text));
+      const ready = this.media?.replayId === replay.id ? this.media.file : null;
       const link = () => encodeLink(this.host.shareBaseUrl, Uint8Array.from(replay.bytes));
       const items: MenuItem[] = [
         { kind: 'text', html: escapeHtml(`${replay.trackName} - ${result(replay)}`), big: true },
@@ -256,6 +273,30 @@ export class ReplayScreens {
               .catch(() => say(S.linkNotCopied)),
         },
       ];
+      if (ready) {
+        if (typeof navigator.share === 'function' && navigator.canShare?.({ files: [ready] }))
+          items.push({
+            kind: 'action',
+            label: S.shareMedia,
+            run: () => {
+              // Call directly from the tap: rendering may have outlived user activation on Safari.
+              void navigator
+                .share({ files: [ready] })
+                .then(() => this.host.shared())
+                .catch((error: unknown) => {
+                  if (!(error instanceof DOMException && error.name === 'AbortError')) say(S.exportFailed);
+                });
+            },
+          });
+        items.push({
+          kind: 'action',
+          label: S.downloadMedia,
+          run: () => {
+            download(ready, ready.name);
+            this.host.shared();
+          },
+        });
+      }
       items.push({
         kind: 'action',
         label: S.copyEmbed,
@@ -298,10 +339,9 @@ export class ReplayScreens {
         void this.card(replay, size)
           .then(async (blob) => {
             if (typeof blob === 'string') return say(blob);
+            trackEvent('export_ready', { format: 'png' });
             if (!copy) {
-              download(blob, `${fileName(replay)}.png`);
-              this.host.shared();
-              return say(S.imageSaved);
+              return this.prepareMedia(blob, `${fileName(replay)}.png`, replay, say, S.imageSaved);
             }
             await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
             say(S.imageCopied);
@@ -337,13 +377,14 @@ export class ReplayScreens {
         },
         { kind: 'action', label: S.saveGif, run: () => void this.gif(replay, say) },
         { kind: 'action', label: S.saveFile, run: () => this.saveFile(replay) },
-        { kind: 'action', label: S.back, run: back },
+        { kind: 'action', navigation: 'back', label: S.back, run: back },
       );
       return { title: S.share, back, items };
     };
   }
 
   private saveFile(replay: StoredReplay): void {
+    trackEvent('export_ready', { format: 'gdr' });
     download(
       new Blob([Uint8Array.from(replay.bytes)], { type: 'application/octet-stream' }),
       `${fileName(replay)}.gdr`,
@@ -439,9 +480,8 @@ export class ReplayScreens {
         signal: rendering.signal,
         onProgress: (done) => say(S.gifRendering(Math.round(done * 100))),
       });
-      download(blob, `${fileName(replay)}.gif`);
-      this.host.shared();
-      say(S.gifSaved((blob.size / 1024 / 1024).toFixed(1)));
+      trackEvent('export_ready', { format: 'gif' });
+      this.prepareMedia(blob, `${fileName(replay)}.gif`, replay, say, S.gifSaved((blob.size / 1024 / 1024).toFixed(1)));
     } catch (error) {
       // Leaving the screen cancels the rendering; there is nobody left to tell.
       if (!rendering.signal.aborted) {
@@ -450,6 +490,23 @@ export class ReplayScreens {
       }
     } finally {
       this.rendering = null;
+    }
+  }
+
+  private prepareMedia(
+    blob: Blob,
+    name: string,
+    replay: StoredReplay,
+    say: (text: string) => void,
+    saved: string,
+  ): void {
+    const file = new File([blob], name, { type: blob.type });
+    this.media = { file, replayId: replay.id };
+    if (typeof navigator.share === 'function' && navigator.canShare?.({ files: [file] })) say(S.mediaReady);
+    else {
+      download(file, name);
+      this.host.shared();
+      say(saved);
     }
   }
 
